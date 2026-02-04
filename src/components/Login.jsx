@@ -1,21 +1,26 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from './Toast.jsx';
+import { USER_ROLES, PARTICIPANT_TYPES } from '../utils/constants';
+import { isValidEmail, isIIITEmail } from '../utils/helpers';
+import { MOCK_USERS } from '../utils/mockData';
 import './Login.css';
 
 const ROLE_REDIRECT = {
-  Participant: '/',
-  Organizer: '/create',
-  Admin: '/',
+  [USER_ROLES.PARTICIPANT]: '/dashboard',
+  [USER_ROLES.ORGANIZER]: '/create',
+  [USER_ROLES.ADMIN]: '/',
 };
 
 function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showSuccess, showError } = useToast();
 
-  const [role, setRole] = useState('Participant');
-  const [participantType, setParticipantType] = useState('IIIT');
+  const [role, setRole] = useState(USER_ROLES.PARTICIPANT);
+  const [participantType, setParticipantType] = useState(PARTICIPANT_TYPES.IIIT);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,8 +30,12 @@ function Login() {
       return 'Email and password are required';
     }
 
-    if (role === 'Participant' && participantType === 'IIIT') {
-      if (!email.toLowerCase().endsWith('@iiit.ac.in')) {
+    if (!isValidEmail(email)) {
+      return 'Please enter a valid email address';
+    }
+
+    if (role === USER_ROLES.PARTICIPANT && participantType === PARTICIPANT_TYPES.IIIT) {
+      if (!isIIITEmail(email)) {
         return 'IIIT participants must use their IIIT email (@iiit.ac.in)';
       }
     }
@@ -42,9 +51,25 @@ function Login() {
       return;
     }
 
-    login({ role, email, participantType });
-    const redirectTo = location.state?.from || ROLE_REDIRECT[role] || '/';
-    navigate(redirectTo, { replace: true });
+    // Mock authentication - In real app, this would call backend API
+    const user = MOCK_USERS.find(u => u.email === email && u.password === password && u.role === role);
+    
+    if (user) {
+      const userData = { ...user };
+      delete userData.password; // Remove password before storing
+      
+      login(userData);
+      showSuccess(`Welcome back, ${userData.firstName || userData.role}!`);
+      
+      const redirectTo = location.state?.from || ROLE_REDIRECT[role] || '/';
+      navigate(redirectTo, { replace: true });
+    } else {
+      setError('Invalid credentials or role mismatch');
+      showError('Login failed. Please check your credentials.');
+    }
+    
+    // Clear password from state
+    setPassword('');
   };
 
   return (
@@ -58,7 +83,7 @@ function Login() {
             <div className="form-group">
               <label>Role</label>
               <div className="role-options">
-                {['Participant', 'Organizer', 'Admin'].map((option) => (
+                {Object.values(USER_ROLES).map((option) => (
                   <label key={option} className={`pill ${role === option ? 'selected' : ''}`}>
                     <input
                       type="radio"
@@ -73,11 +98,11 @@ function Login() {
               </div>
             </div>
 
-            {role === 'Participant' && (
+            {role === USER_ROLES.PARTICIPANT && (
               <div className="form-group">
                 <label>Participant Type</label>
                 <div className="role-options">
-                  {['IIIT', 'Non-IIIT'].map((option) => (
+                  {Object.values(PARTICIPANT_TYPES).map((option) => (
                     <label key={option} className={`pill ${participantType === option ? 'selected' : ''}`}>
                       <input
                         type="radio"
@@ -90,7 +115,7 @@ function Login() {
                     </label>
                   ))}
                 </div>
-                {participantType === 'IIIT' && (
+                {participantType === PARTICIPANT_TYPES.IIIT && (
                   <p className="hint">IIIT participants must login with institute email only.</p>
                 )}
               </div>
@@ -124,8 +149,10 @@ function Login() {
           </form>
 
           <div className="auth-notes">
-            <p><strong>Organizer:</strong> Accounts are provisioned by Admin; password resets via Admin only.</p>
-            <p><strong>Admin:</strong> First user in system; credentials handled by backend only.</p>
+            <p><strong>Test Credentials:</strong></p>
+            <p>Participant: participant@iiit.ac.in / password123</p>
+            <p>Organizer: organizer@iiit.ac.in / password123</p>
+            <p>Admin: admin@iiit.ac.in / admin123</p>
           </div>
         </div>
       </div>

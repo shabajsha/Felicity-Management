@@ -1,5 +1,4 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { useState } from 'react';
 import './App.css';
 import EventList from './components/EventList';
 import EventForm from './components/EventForm';
@@ -7,75 +6,51 @@ import EventDetails from './components/EventDetails';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Login from './components/Login.jsx';
 import ParticipantRegister from './components/ParticipantRegister.jsx';
+import ParticipantDashboard from './pages/ParticipantDashboard.jsx';
+import ProfilePage from './pages/ProfilePage.jsx';
+import ClubsPage from './pages/ClubsPage.jsx';
+import ClubDetailPage from './pages/ClubDetailPage.jsx';
 import { useAuth } from './context/AuthContext.jsx';
+import { useData } from './context/DataContext.jsx';
+import { useToast } from './components/Toast.jsx';
+import { USER_ROLES } from './utils/constants';
 
 function App() {
   const { user, logout } = useAuth();
-  const [events, setEvents] = useState([
-    {
-      id: 1,
-      title: 'Tech Conference 2026',
-      date: '2026-03-15',
-      time: '09:00',
-      location: 'Convention Center, San Francisco',
-      description: 'Annual technology conference featuring the latest innovations in AI and software development.',
-      category: 'Technology',
-      organizer: 'Tech Events Inc.',
-      capacity: 500,
-      registered: 234
-    },
-    {
-      id: 2,
-      title: 'Music Festival',
-      date: '2026-04-20',
-      time: '18:00',
-      location: 'Central Park, New York',
-      description: 'Summer music festival featuring local and international artists.',
-      category: 'Entertainment',
-      organizer: 'Live Nation',
-      capacity: 1000,
-      registered: 678
-    },
-    {
-      id: 3,
-      title: 'Food & Wine Expo',
-      date: '2026-05-10',
-      time: '12:00',
-      location: 'Downtown Convention Hall',
-      description: 'Explore culinary delights from around the world with renowned chefs.',
-      category: 'Food & Drink',
-      organizer: 'Culinary Arts Society',
-      capacity: 300,
-      registered: 145
-    }
-  ]);
+  const { events, registerForEvent, deleteEvent, updateEvent, addEvent } = useData();
+  const { showSuccess, showError } = useToast();
 
-  const addEvent = (newEvent) => {
-    setEvents([...events, { ...newEvent, id: Date.now(), registered: 0 }]);
-  };
-
-  const updateEvent = (id, updatedEvent) => {
-    setEvents(events.map(event => 
-      event.id === id ? { ...event, ...updatedEvent } : event
-    ));
-  };
-
-  const deleteEvent = (id) => {
-    if (!user || (user.role !== 'Organizer' && user.role !== 'Admin')) {
+  const handleRegister = (eventId) => {
+    if (!user) {
+      showError('Please login to register');
       return;
     }
-    setEvents(events.filter(event => event.id !== id));
+    
+    const result = registerForEvent(user.id, eventId);
+    if (result.success) {
+      showSuccess('Successfully registered for event!');
+    } else {
+      showError(result.message);
+    }
   };
 
-  const registerForEvent = (id) => {
-    if (!user || user.role !== 'Participant') {
+  const handleDelete = (id) => {
+    if (!user || (user.role !== USER_ROLES.ORGANIZER && user.role !== USER_ROLES.ADMIN)) {
+      showError('You do not have permission to delete events');
       return;
     }
-    setEvents(events.map(event => 
-      event.id === id && event.registered < event.capacity
-        ? { ...event, registered: event.registered + 1 }
-        : event
-    ));
+    deleteEvent(id);
+    showSuccess('Event deleted successfully');
+  };
+
+  const handleAddEvent = (newEvent) => {
+    addEvent(newEvent);
+    showSuccess('Event created successfully');
+  };
+
+  const handleUpdateEvent = (id, updatedEvent) => {
+    updateEvent(id, updatedEvent);
+    showSuccess('Event updated successfully');
   };
 
   return (
@@ -89,16 +64,26 @@ function App() {
             <nav className="nav">
               {user && (
                 <>
-                  <Link to="/" className="nav-link">Events</Link>
-                  {(user.role === 'Organizer' || user.role === 'Admin') && (
-                    <Link to="/create" className="nav-link">Create Event</Link>
+                  {user.role === USER_ROLES.PARTICIPANT && (
+                    <>
+                      <Link to="/dashboard" className="nav-link">Dashboard</Link>
+                      <Link to="/events" className="nav-link">Browse Events</Link>
+                      <Link to="/clubs" className="nav-link">Clubs</Link>
+                      <Link to="/profile" className="nav-link">Profile</Link>
+                    </>
+                  )}
+                  {(user.role === USER_ROLES.ORGANIZER || user.role === USER_ROLES.ADMIN) && (
+                    <>
+                      <Link to="/" className="nav-link">Events</Link>
+                      <Link to="/create" className="nav-link">Create Event</Link>
+                    </>
                   )}
                 </>
               )}
               {!user && (
                 <>
                   <Link to="/login" className="nav-link">Login</Link>
-                  <Link to="/register" className="nav-link">Participant Register</Link>
+                  <Link to="/register" className="nav-link">Register</Link>
                 </>
               )}
             </nav>
@@ -116,13 +101,33 @@ function App() {
           <div className="container">
             <Routes>
               <Route 
+                path="/dashboard" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
+                    <ParticipantDashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/events" 
+                element={
+                  <ProtectedRoute>
+                    <EventList 
+                      events={events} 
+                      onDelete={handleDelete}
+                      onRegister={handleRegister}
+                    />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
                 path="/" 
                 element={
                   <ProtectedRoute>
                     <EventList 
                       events={events} 
-                      onDelete={deleteEvent}
-                      onRegister={registerForEvent}
+                      onDelete={handleDelete}
+                      onRegister={handleRegister}
                     />
                   </ProtectedRoute>
                 } 
@@ -130,18 +135,18 @@ function App() {
               <Route 
                 path="/create" 
                 element={
-                  <ProtectedRoute allowedRoles={['Organizer', 'Admin']}>
-                    <EventForm onSubmit={addEvent} />
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER, USER_ROLES.ADMIN]}>
+                    <EventForm onSubmit={handleAddEvent} />
                   </ProtectedRoute>
                 } 
               />
               <Route 
                 path="/edit/:id" 
                 element={
-                  <ProtectedRoute allowedRoles={['Organizer', 'Admin']}>
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER, USER_ROLES.ADMIN]}>
                     <EventForm 
                       events={events} 
-                      onSubmit={updateEvent} 
+                      onSubmit={handleUpdateEvent} 
                       isEdit={true}
                     />
                   </ProtectedRoute>
@@ -153,9 +158,33 @@ function App() {
                   <ProtectedRoute>
                     <EventDetails 
                       events={events}
-                      onRegister={registerForEvent}
-                      onDelete={deleteEvent}
+                      onRegister={handleRegister}
+                      onDelete={handleDelete}
                     />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
+                    <ProfilePage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/clubs" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
+                    <ClubsPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/club/:id" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
+                    <ClubDetailPage />
                   </ProtectedRoute>
                 } 
               />
@@ -171,3 +200,4 @@ function App() {
 }
 
 export default App;
+

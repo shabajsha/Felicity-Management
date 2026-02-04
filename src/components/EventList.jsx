@@ -1,33 +1,25 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import EventCard from './EventCard';
+import { searchEvents, filterEvents, sortEvents } from '../utils/helpers';
+import { EVENT_TYPES, ELIGIBILITY_TYPES } from '../utils/constants';
 import './EventList.css';
 
 function EventList({ events, onDelete, onRegister }) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCategory, setFilterCategory] = useState('All');
+  const [filterType, setFilterType] = useState('All');
+  const [filterEligibility, setFilterEligibility] = useState('All');
   const [sortBy, setSortBy] = useState('date');
 
-  const categories = ['All', ...new Set(events.map(event => event.category))];
-
-  const filteredEvents = events
-    .filter(event => {
-      const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          event.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = filterCategory === 'All' || event.category === filterCategory;
-      return matchesSearch && matchesCategory;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'date') {
-        return new Date(a.date) - new Date(b.date);
-      } else if (sortBy === 'title') {
-        return a.title.localeCompare(b.title);
-      } else if (sortBy === 'capacity') {
-        return b.capacity - a.capacity;
-      }
-      return 0;
+  const filteredEvents = useMemo(() => {
+    let result = searchEvents(events, searchTerm);
+    result = filterEvents(result, { 
+      type: filterType !== 'All' ? filterType : null,
+      eligibility: filterEligibility !== 'All' ? filterEligibility : null 
     });
+    result = sortEvents(result, sortBy);
+    return result;
+  }, [events, searchTerm, filterType, filterEligibility, sortBy]);
 
   return (
     <div className="event-list-container">
@@ -49,13 +41,24 @@ function EventList({ events, onDelete, onRegister }) {
 
         <div className="filters">
           <select 
-            value={filterCategory} 
-            onChange={(e) => setFilterCategory(e.target.value)}
+            value={filterType} 
+            onChange={(e) => setFilterType(e.target.value)}
             className="filter-select"
           >
-            {categories.map(category => (
-              <option key={category} value={category}>{category}</option>
-            ))}
+            <option value="All">All Types</option>
+            <option value={EVENT_TYPES.NORMAL}>Normal Events</option>
+            <option value={EVENT_TYPES.MERCHANDISE}>Merchandise</option>
+          </select>
+
+          <select 
+            value={filterEligibility} 
+            onChange={(e) => setFilterEligibility(e.target.value)}
+            className="filter-select"
+          >
+            <option value="All">All Eligibility</option>
+            <option value={ELIGIBILITY_TYPES.ALL}>All Participants</option>
+            <option value={ELIGIBILITY_TYPES.IIIT_ONLY}>IIIT Only</option>
+            <option value={ELIGIBILITY_TYPES.EXTERNAL_ONLY}>External Only</option>
           </select>
 
           <select 

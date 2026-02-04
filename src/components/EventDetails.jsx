@@ -1,5 +1,7 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { formatDate, formatTime, getEventAvailability } from '../utils/helpers';
+import { USER_ROLES, EVENT_TYPES } from '../utils/constants';
 import './EventDetails.css';
 
 function EventDetails({ events, onRegister, onDelete }) {
@@ -21,37 +23,10 @@ function EventDetails({ events, onRegister, onDelete }) {
     );
   }
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long', 
-      day: 'numeric'
-    });
-  };
-
-  const formatTime = (timeString) => {
-    const [hours, minutes] = timeString.split(':');
-    const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
-  };
-
-  const getAvailabilityStatus = () => {
-    const available = event.capacity - event.registered;
-    const percentage = (event.registered / event.capacity) * 100;
-    
-    if (percentage >= 90) return { text: 'Almost Full!', class: 'almost-full' };
-    if (percentage >= 70) return { text: 'Filling Up Fast', class: 'filling-up' };
-    return { text: 'Available', class: 'available' };
-  };
-
   const isFull = event.registered >= event.capacity;
-  const isParticipant = user?.role === 'Participant';
-  const canManage = user?.role === 'Organizer' || user?.role === 'Admin';
-  const availabilityStatus = getAvailabilityStatus();
+  const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
+  const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
+  const availabilityStatus = getEventAvailability(event);
 
   const handleDelete = () => {
     if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
@@ -69,9 +44,14 @@ function EventDetails({ events, onRegister, onDelete }) {
       <div className="details-card">
         <div className="details-header">
           <div className="header-top">
-            <span className={`category-badge ${event.category.toLowerCase().replace(/\s/g, '-')}`}>
-              {event.category}
-            </span>
+            <div className="badges-group">
+              <span className={`category-badge ${event.category.toLowerCase().replace(/\s/g, '-')}`}>
+                {event.category}
+              </span>
+              {event.type === EVENT_TYPES.MERCHANDISE && (
+                <span className="type-badge merchandise">🛍️ Merchandise</span>
+              )}
+            </div>
             <span className={`status-badge ${availabilityStatus.class}`}>
               {availabilityStatus.text}
             </span>

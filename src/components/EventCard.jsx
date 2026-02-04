@@ -1,30 +1,16 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { formatDateShort, getEventAvailability } from '../utils/helpers';
+import { EVENT_TYPES, USER_ROLES } from '../utils/constants';
 import './EventCard.css';
 
 function EventCard({ event, onDelete, onRegister }) {
   const { user } = useAuth();
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
 
-  const getAvailability = () => {
-    const available = event.capacity - event.registered;
-    const percentage = (event.registered / event.capacity) * 100;
-    
-    if (percentage >= 90) return 'almost-full';
-    if (percentage >= 70) return 'filling-up';
-    return 'available';
-  };
-
+  const availabilityStatus = getEventAvailability(event);
   const isFull = event.registered >= event.capacity;
-  const isParticipant = user?.role === 'Participant';
-  const canManage = user?.role === 'Organizer' || user?.role === 'Admin';
+  const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
+  const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
 
   return (
     <div className="event-card">
@@ -32,9 +18,14 @@ function EventCard({ event, onDelete, onRegister }) {
         <span className={`category-badge ${event.category.toLowerCase().replace(/\s/g, '-')}`}>
           {event.category}
         </span>
-        <span className={`availability-badge ${getAvailability()}`}>
-          {event.capacity - event.registered} spots left
-        </span>
+        <div className="badges">
+          {event.type === EVENT_TYPES.MERCHANDISE && (
+            <span className="type-badge merchandise">🛍️ Merch</span>
+          )}
+          <span className={`availability-badge ${availabilityStatus.class}`}>
+            {availabilityStatus.available} spots left
+          </span>
+        </div>
       </div>
 
       <div className="event-card-body">
@@ -45,7 +36,7 @@ function EventCard({ event, onDelete, onRegister }) {
         <div className="event-meta">
           <div className="meta-item">
             <span className="icon">📅</span>
-            <span>{formatDate(event.date)}</span>
+            <span>{formatDateShort(event.date)}</span>
           </div>
           <div className="meta-item">
             <span className="icon">⏰</span>
@@ -71,7 +62,7 @@ function EventCard({ event, onDelete, onRegister }) {
         <div className="progress-bar-container">
           <div className="progress-bar">
             <div 
-              className={`progress-fill ${getAvailability()}`}
+              className={`progress-fill ${availabilityStatus.class}`}
               style={{ width: `${(event.registered / event.capacity) * 100}%` }}
             ></div>
           </div>
