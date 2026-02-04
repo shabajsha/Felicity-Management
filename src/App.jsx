@@ -10,6 +10,10 @@ import ParticipantDashboard from './pages/ParticipantDashboard.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ClubsPage from './pages/ClubsPage.jsx';
 import ClubDetailPage from './pages/ClubDetailPage.jsx';
+import OrganizerDashboard from './pages/OrganizerDashboard.jsx';
+import EventFormBuilder from './pages/EventFormBuilder.jsx';
+import ManageEventsPage from './pages/ManageEventsPage.jsx';
+import RegistrationManagement from './pages/RegistrationManagement.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useData } from './context/DataContext.jsx';
 import { useToast } from './components/Toast.jsx';
@@ -72,7 +76,15 @@ function App() {
                       <Link to="/profile" className="nav-link">Profile</Link>
                     </>
                   )}
-                  {(user.role === USER_ROLES.ORGANIZER || user.role === USER_ROLES.ADMIN) && (
+                  {user.role === USER_ROLES.ORGANIZER && (
+                    <>
+                      <Link to="/organizer/dashboard" className="nav-link">Dashboard</Link>
+                      <Link to="/organizer/events" className="nav-link">My Events</Link>
+                      <Link to="/organizer/events/create" className="nav-link">Create Event</Link>
+                      <Link to="/organizer/registrations" className="nav-link">Registrations</Link>
+                    </>
+                  )}
+                  {user.role === USER_ROLES.ADMIN && (
                     <>
                       <Link to="/" className="nav-link">Events</Link>
                       <Link to="/create" className="nav-link">Create Event</Link>
@@ -157,7 +169,6 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <EventDetails 
-                      events={events}
                       onRegister={handleRegister}
                       onDelete={handleDelete}
                     />
@@ -185,6 +196,54 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
                     <ClubDetailPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/dashboard" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <OrganizerDashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/events" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <ManageEventsPage />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/events/create" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <EventFormBuilder />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/events/edit/:id" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <EventFormBuilder />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/events/:eventId/manage" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <RegistrationManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/registrations" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <RegistrationManagement />
                   </ProtectedRoute>
                 } 
               />

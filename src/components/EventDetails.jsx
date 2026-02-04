@@ -1,15 +1,17 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useData } from '../context/DataContext.jsx';
 import { formatDate, formatTime, getEventAvailability } from '../utils/helpers';
 import { USER_ROLES, EVENT_TYPES } from '../utils/constants';
 import './EventDetails.css';
 
-function EventDetails({ events, onRegister, onDelete }) {
+function EventDetails({ onRegister, onDelete }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { events } = useData();
   
-  const event = events.find(e => e.id === parseInt(id));
+  const event = events.find(e => e.id === parseInt(id) || e.id === id.toString());
 
   if (!event) {
     return (
@@ -45,8 +47,8 @@ function EventDetails({ events, onRegister, onDelete }) {
         <div className="details-header">
           <div className="header-top">
             <div className="badges-group">
-              <span className={`category-badge ${event.category.toLowerCase().replace(/\s/g, '-')}`}>
-                {event.category}
+              <span className={`category-badge ${event.category ? event.category.toLowerCase().replace(/\s/g, '-') : 'default'}`}>
+                {event.category || 'Uncategorized'}
               </span>
               {event.type === EVENT_TYPES.MERCHANDISE && (
                 <span className="type-badge merchandise">🛍️ Merchandise</span>

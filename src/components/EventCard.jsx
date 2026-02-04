@@ -15,8 +15,8 @@ function EventCard({ event, onDelete, onRegister }) {
   return (
     <div className="event-card">
       <div className="event-card-header">
-        <span className={`category-badge ${event.category.toLowerCase().replace(/\s/g, '-')}`}>
-          {event.category}
+        <span className={`category-badge ${event.category ? event.category.toLowerCase().replace(/\s/g, '-') : 'default'}`}>
+          {event.category || 'Uncategorized'}
         </span>
         <div className="badges">
           {event.type === EVENT_TYPES.MERCHANDISE && (

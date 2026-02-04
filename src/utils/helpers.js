@@ -76,8 +76,10 @@ export const isRegistrationClosed = (deadline) => {
  * Get event availability status
  */
 export const getEventAvailability = (event) => {
-  const available = event.capacity - event.registered;
-  const percentage = (event.registered / event.capacity) * 100;
+  const capacity = event.capacity || event.maxParticipants || 0;
+  const registered = event.registered || 0;
+  const available = capacity - registered;
+  const percentage = capacity > 0 ? (registered / capacity) * 100 : 0;
   
   if (percentage >= 90) return { text: 'Almost Full!', class: 'almost-full', available };
   if (percentage >= 70) return { text: 'Filling Up Fast', class: 'filling-up', available };
@@ -263,6 +265,26 @@ export const getCategoryColor = (category) => {
     'Competition': '#ef4444',
   };
   return colors[category] || '#6b7280';
+};
+
+/**
+ * Get event status based on date
+ */
+export const getEventStatus = (eventDate) => {
+  const now = new Date();
+  const date = new Date(eventDate);
+  
+  // Normalize dates to compare without time
+  now.setHours(0, 0, 0, 0);
+  date.setHours(0, 0, 0, 0);
+  
+  if (date > now) {
+    return 'upcoming';
+  } else if (date.getTime() === now.getTime()) {
+    return 'ongoing';
+  } else {
+    return 'past';
+  }
 };
 
 /**

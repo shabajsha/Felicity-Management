@@ -48,11 +48,12 @@ export function DataProvider({ children }) {
       ...eventData,
       id: generateId(),
       registered: 0,
-      status: EVENT_STATUS.DRAFT,
+      capacity: eventData.maxParticipants || eventData.capacity || 50,
+      status: EVENT_STATUS.PUBLISHED,
       createdAt: new Date().toISOString(),
     };
     setEvents(prev => [...prev, newEvent]);
-    return newEvent;
+    return newEvent.id;
   };
 
   const updateEvent = (id, updates) => {
