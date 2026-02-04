@@ -4,8 +4,13 @@ import './App.css';
 import EventList from './components/EventList';
 import EventForm from './components/EventForm';
 import EventDetails from './components/EventDetails';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
+import Login from './components/Login.jsx';
+import ParticipantRegister from './components/ParticipantRegister.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 
 function App() {
+  const { user, logout } = useAuth();
   const [events, setEvents] = useState([
     {
       id: 1,
@@ -56,10 +61,16 @@ function App() {
   };
 
   const deleteEvent = (id) => {
+    if (!user || (user.role !== 'Organizer' && user.role !== 'Admin')) {
+      return;
+    }
     setEvents(events.filter(event => event.id !== id));
   };
 
   const registerForEvent = (id) => {
+    if (!user || user.role !== 'Participant') {
+      return;
+    }
     setEvents(events.map(event => 
       event.id === id && event.registered < event.capacity
         ? { ...event, registered: event.registered + 1 }
@@ -76,9 +87,28 @@ function App() {
               <Link to="/">📅 EventHub</Link>
             </h1>
             <nav className="nav">
-              <Link to="/" className="nav-link">Events</Link>
-              <Link to="/create" className="nav-link">Create Event</Link>
+              {user && (
+                <>
+                  <Link to="/" className="nav-link">Events</Link>
+                  {(user.role === 'Organizer' || user.role === 'Admin') && (
+                    <Link to="/create" className="nav-link">Create Event</Link>
+                  )}
+                </>
+              )}
+              {!user && (
+                <>
+                  <Link to="/login" className="nav-link">Login</Link>
+                  <Link to="/register" className="nav-link">Participant Register</Link>
+                </>
+              )}
             </nav>
+
+            {user && (
+              <div className="user-badge">
+                <span className="role-chip">{user.role}</span>
+                <button className="btn btn-secondary" onClick={logout}>Logout</button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -88,37 +118,49 @@ function App() {
               <Route 
                 path="/" 
                 element={
-                  <EventList 
-                    events={events} 
-                    onDelete={deleteEvent}
-                    onRegister={registerForEvent}
-                  />
+                  <ProtectedRoute>
+                    <EventList 
+                      events={events} 
+                      onDelete={deleteEvent}
+                      onRegister={registerForEvent}
+                    />
+                  </ProtectedRoute>
                 } 
               />
               <Route 
                 path="/create" 
-                element={<EventForm onSubmit={addEvent} />} 
+                element={
+                  <ProtectedRoute allowedRoles={['Organizer', 'Admin']}>
+                    <EventForm onSubmit={addEvent} />
+                  </ProtectedRoute>
+                } 
               />
               <Route 
                 path="/edit/:id" 
                 element={
-                  <EventForm 
-                    events={events} 
-                    onSubmit={updateEvent} 
-                    isEdit={true}
-                  />
+                  <ProtectedRoute allowedRoles={['Organizer', 'Admin']}>
+                    <EventForm 
+                      events={events} 
+                      onSubmit={updateEvent} 
+                      isEdit={true}
+                    />
+                  </ProtectedRoute>
                 } 
               />
               <Route 
                 path="/event/:id" 
                 element={
-                  <EventDetails 
-                    events={events}
-                    onRegister={registerForEvent}
-                    onDelete={deleteEvent}
-                  />
+                  <ProtectedRoute>
+                    <EventDetails 
+                      events={events}
+                      onRegister={registerForEvent}
+                      onDelete={deleteEvent}
+                    />
+                  </ProtectedRoute>
                 } 
               />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<ParticipantRegister />} />
             </Routes>
           </div>
         </main>

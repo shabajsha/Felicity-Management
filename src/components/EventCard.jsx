@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
 import './EventCard.css';
 
 function EventCard({ event, onDelete, onRegister }) {
+  const { user } = useAuth();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
@@ -21,6 +23,8 @@ function EventCard({ event, onDelete, onRegister }) {
   };
 
   const isFull = event.registered >= event.capacity;
+  const isParticipant = user?.role === 'Participant';
+  const canManage = user?.role === 'Organizer' || user?.role === 'Admin';
 
   return (
     <div className="event-card">
@@ -78,28 +82,32 @@ function EventCard({ event, onDelete, onRegister }) {
       </div>
 
       <div className="event-card-footer">
-        <button 
-          className="btn btn-primary"
-          onClick={() => onRegister(event.id)}
-          disabled={isFull}
-        >
-          {isFull ? '✓ Full' : '✓ Register'}
-        </button>
-        <div className="action-buttons">
-          <Link to={`/edit/${event.id}`} className="btn btn-secondary">
-            ✏️ Edit
-          </Link>
+        {isParticipant && (
           <button 
-            className="btn btn-danger"
-            onClick={() => {
-              if (window.confirm('Are you sure you want to delete this event?')) {
-                onDelete(event.id);
-              }
-            }}
+            className="btn btn-primary"
+            onClick={() => onRegister(event.id)}
+            disabled={isFull}
           >
-            🗑️ Delete
+            {isFull ? '✓ Full' : '✓ Register'}
           </button>
-        </div>
+        )}
+        {canManage && (
+          <div className="action-buttons">
+            <Link to={`/edit/${event.id}`} className="btn btn-secondary">
+              ✏️ Edit
+            </Link>
+            <button 
+              className="btn btn-danger"
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete this event?')) {
+                  onDelete(event.id);
+                }
+              }}
+            >
+              🗑️ Delete
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -16,7 +16,7 @@
 .event-list-header {
   text-align: center;
   margin-bottom: 3rem;
-  color: white;
+  color: var(--color-text);
 }
 
 .event-list-header h2 {
@@ -27,7 +27,7 @@
 
 .subtitle {
   font-size: 1.2rem;
-  opacity: 0.9;
+  color: var(--color-muted);
 }
 
 .controls {
@@ -45,17 +45,18 @@
 .search-input {
   width: 100%;
   padding: 0.875rem 1.25rem;
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 120ms ease, border-color 120ms ease;
 }
 
 .search-input:focus {
   outline: none;
-  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
-  transform: translateY(-2px);
+  border-color: var(--color-ink);
+  box-shadow: var(--focus-ring);
 }
 
 .filters {
@@ -65,24 +66,25 @@
 
 .filter-select {
   padding: 0.875rem 1.25rem;
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   font-size: 1rem;
-  background: white;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: box-shadow 120ms ease, border-color 120ms ease;
   min-width: 180px;
 }
 
 .filter-select:hover {
-  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.3);
-  transform: translateY(-2px);
+  border-color: #98a2b3;
+  box-shadow: var(--shadow-sm);
 }
 
 .filter-select:focus {
   outline: none;
-  box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+  border-color: var(--color-ink);
+  box-shadow: var(--focus-ring);
 }
 
 .events-grid {
@@ -95,14 +97,15 @@
 .no-events {
   text-align: center;
   padding: 4rem 2rem;
-  background: white;
+  background: var(--color-surface);
   border-radius: 16px;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
 }
 
 .no-events p {
   font-size: 1.2rem;
-  color: #666;
+  color: var(--color-muted);
 }
 
 /* Responsive Design */

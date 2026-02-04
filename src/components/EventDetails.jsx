@@ -1,9 +1,11 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext.jsx';
 import './EventDetails.css';
 
 function EventDetails({ events, onRegister, onDelete }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const event = events.find(e => e.id === parseInt(id));
 
@@ -47,6 +49,8 @@ function EventDetails({ events, onRegister, onDelete }) {
   };
 
   const isFull = event.registered >= event.capacity;
+  const isParticipant = user?.role === 'Participant';
+  const canManage = user?.role === 'Organizer' || user?.role === 'Admin';
   const availabilityStatus = getAvailabilityStatus();
 
   const handleDelete = () => {
@@ -141,21 +145,27 @@ function EventDetails({ events, onRegister, onDelete }) {
         </div>
 
         <div className="details-footer">
-          <button 
-            className="btn btn-primary btn-large"
-            onClick={handleRegister}
-            disabled={isFull}
-          >
-            {isFull ? '✓ Event Full' : '✓ Register for This Event'}
-          </button>
+          {isParticipant && (
+            <button 
+              className="btn btn-primary btn-large"
+              onClick={handleRegister}
+              disabled={isFull}
+            >
+              {isFull ? '✓ Event Full' : '✓ Register for This Event'}
+            </button>
+          )}
           
           <div className="action-buttons">
-            <Link to={`/edit/${event.id}`} className="btn btn-secondary">
-              ✏️ Edit Event
-            </Link>
-            <button onClick={handleDelete} className="btn btn-danger">
-              🗑️ Delete Event
-            </button>
+            {canManage && (
+              <>
+                <Link to={`/edit/${event.id}`} className="btn btn-secondary">
+                  ✏️ Edit Event
+                </Link>
+                <button onClick={handleDelete} className="btn btn-danger">
+                  🗑️ Delete Event
+                </button>
+              </>
+            )}
             <Link to="/" className="btn btn-outline">
               ← Back to Events
             </Link>

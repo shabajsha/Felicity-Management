@@ -89,9 +89,10 @@ function EventForm({ events, onSubmit, isEdit = false }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    const nextValue = name === 'capacity' ? (value === '' ? '' : Number(value)) : value;
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: nextValue
     }));
     // Clear error for this field when user starts typing
     if (errors[name]) {
