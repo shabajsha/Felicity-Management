@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
 import './App.css';
 import EventList from './components/EventList';
 import EventForm from './components/EventForm';
@@ -14,6 +14,10 @@ import OrganizerDashboard from './pages/OrganizerDashboard.jsx';
 import EventFormBuilder from './pages/EventFormBuilder.jsx';
 import ManageEventsPage from './pages/ManageEventsPage.jsx';
 import RegistrationManagement from './pages/RegistrationManagement.jsx';
+import AdminDashboard from './pages/AdminDashboard.jsx';
+import ClubManagement from './pages/ClubManagement.jsx';
+import UserManagement from './pages/UserManagement.jsx';
+import EventApproval from './pages/EventApproval.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useData } from './context/DataContext.jsx';
 import { useToast } from './components/Toast.jsx';
@@ -86,8 +90,10 @@ function App() {
                   )}
                   {user.role === USER_ROLES.ADMIN && (
                     <>
-                      <Link to="/" className="nav-link">Events</Link>
-                      <Link to="/create" className="nav-link">Create Event</Link>
+                      <Link to="/admin/dashboard" className="nav-link">Dashboard</Link>
+                      <Link to="/admin/events" className="nav-link">Event Approval</Link>
+                      <Link to="/admin/clubs" className="nav-link">Clubs</Link>
+                      <Link to="/admin/users" className="nav-link">Users</Link>
                     </>
                   )}
                 </>
@@ -244,6 +250,42 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
                     <RegistrationManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={<Navigate to="/admin/dashboard" replace />}
+              />
+              <Route 
+                path="/admin/dashboard" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/events" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
+                    <EventApproval />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/clubs" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
+                    <ClubManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin/users" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
+                    <UserManagement />
                   </ProtectedRoute>
                 } 
               />

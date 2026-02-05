@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { formatDateShort, getEventAvailability } from '../utils/helpers';
+import { formatDateShort, getEventAvailability, formatTime } from '../utils/helpers';
 import { EVENT_TYPES, USER_ROLES } from '../utils/constants';
 import './EventCard.css';
 
@@ -40,7 +40,7 @@ function EventCard({ event, onDelete, onRegister }) {
           </div>
           <div className="meta-item">
             <span className="icon">⏰</span>
-            <span>{event.time}</span>
+            <span>{formatTime(event.time)}</span>
           </div>
           <div className="meta-item">
             <span className="icon">📍</span>
@@ -84,7 +84,7 @@ function EventCard({ event, onDelete, onRegister }) {
         )}
         {canManage && (
           <div className="action-buttons">
-            <Link to={`/edit/${event.id}`} className="btn btn-secondary">
+            <Link to={`/organizer/events/edit/${event.id}`} className="btn btn-secondary">
               ✏️ Edit
             </Link>
             <button 

@@ -122,6 +122,7 @@ export const STORAGE_KEYS = {
   AUTH_USER: 'ems_auth_user',
   EVENTS: 'ems_events',
   REGISTRATIONS: 'ems_registrations',
+  USERS: 'ems_users',
 };
 
 // Route Paths

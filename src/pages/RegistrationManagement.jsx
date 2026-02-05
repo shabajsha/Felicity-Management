@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { formatDate } from '../utils/helpers';
 import './RegistrationManagement.css';
@@ -8,25 +9,46 @@ import './RegistrationManagement.css';
 const RegistrationManagement = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
-  const { events, registrations, updateRegistration, users } = useData();
+  const { user } = useAuth();
+  const { events, registrations, updateRegistration, users, organizers } = useData();
   const { showSuccess } = useToast();
 
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedEventFilter, setSelectedEventFilter] = useState('all');
 
-  const event = events.find(e => e.id === eventId);
+  // Get organizer's events
+  const organizerEvents = useMemo(() => {
+    if (!user?.organizerId) return [];
+    return events.filter(e => e.organizerId === user.organizerId);
+  }, [events, user]);
+
+  const event = eventId ? events.find(e => e.id == eventId || e.id === parseInt(eventId)) : null;
 
   const eventRegistrations = useMemo(() => {
-    if (!event) return [];
-    return registrations
-      .filter(reg => reg.eventId === eventId)
-      .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
-  }, [registrations, eventId, event]);
+    if (eventId) {
+      // Show registrations for specific event
+      return registrations
+        .filter(reg => reg.eventId == eventId || reg.eventId === parseInt(eventId))
+        .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
+    } else {
+      // Show all registrations for organizer's events
+      const organizerEventIds = organizerEvents.map(e => e.id);
+      return registrations
+        .filter(reg => organizerEventIds.includes(reg.eventId))
+        .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
+    }
+  }, [registrations, eventId, organizerEvents]);
 
   const filteredRegistrations = useMemo(() => {
     let filtered = eventRegistrations;
+
+    // Filter by event when showing all registrations
+    if (!eventId && selectedEventFilter !== 'all') {
+      filtered = filtered.filter(reg => reg.eventId == selectedEventFilter);
+    }
 
     if (filterStatus !== 'all') {
       filtered = filtered.filter(reg => reg.status === filterStatus);
@@ -35,13 +57,13 @@ const RegistrationManagement = () => {
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(reg =>
-        reg.participantName.toLowerCase().includes(search) ||
-        reg.email.toLowerCase().includes(search)
+        (reg.participantName?.toLowerCase() || '').includes(search) ||
+        (reg.email?.toLowerCase() || '').includes(search)
       );
     }
 
     return filtered;
-  }, [eventRegistrations, filterStatus, searchTerm]);
+  }, [eventRegistrations, filterStatus, searchTerm, selectedEventFilter, eventId]);
 
   const stats = useMemo(() => {
     const total = eventRegistrations.length;
@@ -93,7 +115,7 @@ const RegistrationManagement = () => {
     showSuccess('Registration data exported successfully');
   };
 
-  if (!event) {
+  if (eventId && !event) {
     return (
       <div className="registration-management">
         <div className="error-state">
@@ -110,13 +132,17 @@ const RegistrationManagement = () => {
     <div className="registration-management">
       <div className="page-header">
         <div>
-          <button onClick={() => navigate(-1)} className="back-button">
-            ← Back
-          </button>
-          <h1>{event.title}</h1>
-          <p className="event-info">
-            {formatDate(event.date)} • {event.location}
-          </p>
+          {eventId && (
+            <button onClick={() => navigate(-1)} className="back-button">
+              ← Back
+            </button>
+          )}
+          <h1>{event ? event.title : 'All Registrations'}</h1>
+          {event && (
+            <p className="event-info">
+              {formatDate(event.date)} • {event.location}
+            </p>
+          )}
         </div>
         <button onClick={handleExport} className="btn-export">
           📥 Export Data
@@ -153,7 +179,17 @@ const RegistrationManagement = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-
+        {!eventId && organizerEvents.length > 0 && (
+          <div className="event-filter">
+            <label>Filter by Event:</label>
+            <select value={selectedEventFilter} onChange={(e) => setSelectedEventFilter(e.target.value)}>
+              <option value="all">All Events</option>
+              {organizerEvents.map(evt => (
+                <option key={evt.id} value={evt.id}>{evt.title}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="filter-buttons">
           <button
             className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
@@ -189,6 +225,7 @@ const RegistrationManagement = () => {
             <thead>
               <tr>
                 <th>Participant</th>
+                {!eventId && <th>Event</th>}
                 <th>Email</th>
                 <th>Phone</th>
                 <th>Registered</th>
@@ -197,18 +234,21 @@ const RegistrationManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredRegistrations.map(registration => (
-                <tr key={registration.id}>
-                  <td>
-                    <div className="participant-info">
-                      <strong>{registration.participantName}</strong>
-                      {registration.isTeam && (
-                        <span className="team-badge">Team</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>{registration.email}</td>
-                  <td>{registration.phone || '-'}</td>
+              {filteredRegistrations.map(registration => {
+                const regEvent = events.find(e => e.id === registration.eventId);
+                return (
+                  <tr key={registration.id}>
+                    <td>
+                      <div className="participant-info">
+                        <strong>{registration.participantName}</strong>
+                        {registration.isTeam && (
+                          <span className="team-badge">Team</span>
+                        )}
+                      </div>
+                    </td>
+                    {!eventId && <td>{regEvent?.title || 'Unknown Event'}</td>}
+                    <td>{registration.email}</td>
+                    <td>{registration.phone || '-'}</td>
                   <td>{formatDate(registration.registeredAt)}</td>
                   <td>
                     <span className={`status-badge ${registration.status}`}>
@@ -245,7 +285,8 @@ const RegistrationManagement = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         ) : (

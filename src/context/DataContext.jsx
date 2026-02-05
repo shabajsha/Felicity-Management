@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { STORAGE_KEYS, EVENT_STATUS, REGISTRATION_STATUS } from '../utils/constants';
-import { MOCK_EVENTS, MOCK_ORGANIZERS, generateMockEvents } from '../utils/mockData';
+import { MOCK_EVENTS, MOCK_ORGANIZERS, MOCK_USERS, generateMockEvents } from '../utils/mockData';
 import { generateId, generateTicketId } from '../utils/helpers';
 
 const DataContext = createContext(null);
@@ -20,6 +20,18 @@ export function DataProvider({ children }) {
   });
 
   const [organizers, setOrganizers] = useState(MOCK_ORGANIZERS);
+
+  const [users, setUsers] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.USERS);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (err) {
+        console.error('Error parsing users from localStorage:', err);
+      }
+    }
+    return MOCK_USERS;
+  });
 
   const [registrations, setRegistrations] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.REGISTRATIONS);
@@ -41,6 +53,10 @@ export function DataProvider({ children }) {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.REGISTRATIONS, JSON.stringify(registrations));
   }, [registrations]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+  }, [users]);
 
   // Event Management
   const addEvent = (eventData) => {
@@ -89,13 +105,22 @@ export function DataProvider({ children }) {
       return { success: false, message: 'Already registered for this event' };
     }
 
+    // Get user information
+    const user = getUserById(userId);
+    const userName = user?.name || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'Unknown');
+    const userPhone = user?.phone || user?.phoneNumber || user?.contactNumber || '';
+
     const newRegistration = {
       id: generateId(),
       userId,
       eventId,
+      participantName: userName,
+      email: user?.email || '',
+      phone: userPhone,
       ticketId: generateTicketId(),
+      registeredAt: new Date().toISOString(),
       registrationDate: new Date().toISOString(),
-      status: REGISTRATION_STATUS.CONFIRMED,
+      status: event.requiresApproval ? 'pending' : REGISTRATION_STATUS.CONFIRMED,
       paymentStatus: event.registrationFee > 0 ? 'Paid' : 'Free',
       amount: event.registrationFee || 0,
       customFormData: formData,
@@ -138,6 +163,12 @@ export function DataProvider({ children }) {
     return registrations.filter(reg => reg.eventId === eventId);
   };
 
+  const updateRegistration = (id, updates) => {
+    setRegistrations(prev =>
+      prev.map(reg => (reg.id === id || reg.id === parseInt(id) ? { ...reg, ...updates } : reg))
+    );
+  };
+
   // Organizer Management
   const addOrganizer = (organizerData) => {
     const newOrganizer = {
@@ -165,10 +196,37 @@ export function DataProvider({ children }) {
     return organizers.find(org => org.id === id || org.id === parseInt(id));
   };
 
+  // User Management
+  const addUser = (userData) => {
+    const newUser = {
+      ...userData,
+      id: generateId(),
+      joinedAt: new Date().toISOString(),
+      isActive: true,
+    };
+    setUsers(prev => [...prev, newUser]);
+    return newUser.id;
+  };
+
+  const updateUser = (id, updates) => {
+    setUsers(prev =>
+      prev.map(user => (user.id === id || user.id === parseInt(id) ? { ...user, ...updates } : user))
+    );
+  };
+
+  const deleteUser = (id) => {
+    setUsers(prev => prev.filter(user => user.id !== id && user.id !== parseInt(id)));
+  };
+
+  const getUserById = (id) => {
+    return users.find(user => user.id === id || user.id === parseInt(id));
+  };
+
   const value = useMemo(
     () => ({
       events,
       organizers,
+      users,
       registrations,
       addEvent,
       updateEvent,
@@ -178,12 +236,17 @@ export function DataProvider({ children }) {
       cancelRegistration,
       getUserRegistrations,
       getEventRegistrations,
+      updateRegistration,
       addOrganizer,
       updateOrganizer,
       deleteOrganizer,
       getOrganizerById,
+      addUser,
+      updateUser,
+      deleteUser,
+      getUserById,
     }),
-    [events, organizers, registrations]
+    [events, organizers, users, registrations]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
