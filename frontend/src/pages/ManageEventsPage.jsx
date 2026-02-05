@@ -134,9 +134,14 @@ const ManageEventsPage = () => {
             Manage Registrations
           </Link>
           {status === EVENT_STATUS.UPCOMING && (
-            <Link to={`/organizer/events/edit/${event.id}`} className="btn-outline">
-              Edit
-            </Link>
+            <>
+              <Link to={`/organizer/checkin/${event.id}`} className="btn-success-small">
+                📱 Check-In
+              </Link>
+              <Link to={`/organizer/events/edit/${event.id}`} className="btn-outline">
+                Edit
+              </Link>
+            </>
           )}
           <button
             onClick={() => handleDeleteClick(event)}

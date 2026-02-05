@@ -14,10 +14,14 @@ import OrganizerDashboard from './pages/OrganizerDashboard.jsx';
 import EventFormBuilder from './pages/EventFormBuilder.jsx';
 import ManageEventsPage from './pages/ManageEventsPage.jsx';
 import RegistrationManagement from './pages/RegistrationManagement.jsx';
+import PaymentApproval from './pages/PaymentApproval.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import ClubManagement from './pages/ClubManagement.jsx';
 import UserManagement from './pages/UserManagement.jsx';
 import EventApproval from './pages/EventApproval.jsx';
+import QRScanner from './components/QRScanner.jsx';
+import DiscussionForum from './components/DiscussionForum.jsx';
+import FeedbackSystem from './components/FeedbackSystem.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useData } from './context/DataContext.jsx';
 import { useToast } from './components/Toast.jsx';
@@ -86,6 +90,7 @@ function App() {
                       <Link to="/organizer/events" className="nav-link">My Events</Link>
                       <Link to="/organizer/events/create" className="nav-link">Create Event</Link>
                       <Link to="/organizer/registrations" className="nav-link">Registrations</Link>
+                      <Link to="/organizer/payments" className="nav-link">Payments</Link>
                     </>
                   )}
                   {user.role === USER_ROLES.ADMIN && (
@@ -250,6 +255,38 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
                     <RegistrationManagement />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/payments" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER]}>
+                    <PaymentApproval />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/organizer/checkin/:eventId" 
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.ORGANIZER, USER_ROLES.ADMIN]}>
+                    <QRScanner />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/forum/:eventId" 
+                element={
+                  <ProtectedRoute>
+                    <DiscussionForum />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/feedback/:eventId" 
+                element={
+                  <ProtectedRoute>
+                    <FeedbackSystem />
                   </ProtectedRoute>
                 } 
               />

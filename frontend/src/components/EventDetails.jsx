@@ -1,15 +1,20 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
+import { useToast } from './Toast.jsx';
 import { formatDate, formatTime, getEventAvailability } from '../utils/helpers';
 import { USER_ROLES, EVENT_TYPES } from '../utils/constants';
+import TeamRegistrationForm from './TeamRegistrationForm.jsx';
 import './EventDetails.css';
 
 function EventDetails({ onRegister, onDelete }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events } = useData();
+  const { events, registerForEvent } = useData();
+  const { showSuccess, showError } = useToast();
+  const [showTeamModal, setShowTeamModal] = useState(false);
   
   const event = events.find(e => e.id === parseInt(id) || e.id === id.toString());
 
@@ -38,7 +43,24 @@ function EventDetails({ onRegister, onDelete }) {
   };
 
   const handleRegister = () => {
-    onRegister(event.id);
+    console.log('handleRegister called', { allowTeams: event.allowTeams });
+    if (event.allowTeams) {
+      console.log('Opening team modal');
+      setShowTeamModal(true);
+    } else {
+      onRegister(event.id);
+    }
+  };
+
+  const handleTeamSubmit = (teamData) => {
+    const result = registerForEvent(user.id, event.id, teamData);
+    if (result.success) {
+      showSuccess('Team registered successfully!');
+      setShowTeamModal(false);
+      navigate('/dashboard');
+    } else {
+      showError(result.message || 'Failed to register team');
+    }
   };
 
   return (
@@ -133,11 +155,21 @@ function EventDetails({ onRegister, onDelete }) {
               onClick={handleRegister}
               disabled={isFull}
             >
-              {isFull ? '✓ Event Full' : '✓ Register for This Event'}
+              {isFull ? '✓ Event Full' : event.allowTeams ? '👥 Register Team' : '✓ Register for This Event'}
             </button>
           )}
           
           <div className="action-buttons">
+            {user && (
+              <>
+                <Link to={`/forum/${event.id}`} className="btn btn-secondary">
+                  💬 Discussion
+                </Link>
+                <Link to={`/feedback/${event.id}`} className="btn btn-secondary">
+                  ⭐ Feedback
+                </Link>
+              </>
+            )}
             {canManage && (
               <>
                 <Link to={`/edit/${event.id}`} className="btn btn-secondary">
@@ -154,6 +186,19 @@ function EventDetails({ onRegister, onDelete }) {
           </div>
         </div>
       </div>
+
+      {/* Team Registration Modal */}
+      {showTeamModal && (
+        <div className="modal-overlay" onClick={() => setShowTeamModal(false)}>
+          <div className="modal-content team-modal" onClick={e => e.stopPropagation()}>
+            <TeamRegistrationForm 
+              event={event}
+              onSubmit={handleTeamSubmit}
+              onCancel={() => setShowTeamModal(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
