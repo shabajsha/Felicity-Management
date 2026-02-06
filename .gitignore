@@ -8,15 +8,15 @@ pnpm-debug.log*
 lerna-debug.log*
 
 # Dependencies
-node_modules
-dist
-dist-ssr
+node_modules/
+dist/
+dist-ssr/
 *.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
 *.suo
 *.ntvs*
@@ -32,13 +32,23 @@ dist-ssr
 .env.production.local
 
 # Testing
-coverage
+coverage/
 *.lcov
-.nyc_output
+.nyc_output/
 
 # Build outputs
-build
+build/
 *.tsbuildinfo
+
+# Frontend specific
+frontend/dist/
+frontend/.vite/
+frontend/node_modules/
+
+# Backend specific
+backend/node_modules/
+backend/uploads/
+backend/.env
 
 # Optional npm cache directory
 .npm
@@ -47,7 +57,11 @@ build
 .eslintcache
 
 # Misc
-.cache
+.cache/
+.vite/
+
+# OS files
+Thumbs.db
 .parcel-cache
 .next
 .nuxt

@@ -25,7 +25,8 @@ const registrationSchema = new mongoose.Schema({
   ticketId: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    index: true
   },
   status: {
     type: String,
@@ -93,7 +94,6 @@ const registrationSchema = new mongoose.Schema({
 
 // Index for better query performance
 registrationSchema.index({ event: 1, user: 1 });
-registrationSchema.index({ ticketId: 1 });
 registrationSchema.index({ status: 1 });
 
 // Generate unique ticket ID

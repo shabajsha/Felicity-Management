@@ -21,6 +21,12 @@ app.use(cors({
 
 // Mount routers
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/events', require('./routes/events'));
+app.use('/api/registrations', require('./routes/registrations'));
+app.use('/api/clubs', require('./routes/clubs'));
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/discussions', require('./routes/discussions'));
+app.use('/api/feedback', require('./routes/feedback'));
 
 // Health check route
 app.get('/health', (req, res) => {
@@ -39,6 +45,12 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
+      events: '/api/events',
+      registrations: '/api/registrations',
+      clubs: '/api/clubs',
+      admin: '/api/admin',
+      discussions: '/api/discussions',
+      feedback: '/api/feedback',
       health: '/health'
     }
   });
