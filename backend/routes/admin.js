@@ -7,6 +7,7 @@ const {
   promoteToOrganizer,
   getSystemStats,
   getPendingEvents,
+  getAllEvents,
   createOrganizer,
   resetOrganizerPassword
 } = require('../controllers/adminController');
@@ -31,6 +32,7 @@ router.post('/organizers', createOrganizer);
 router.get('/stats', getSystemStats);
 
 // Event management
+router.get('/events', getAllEvents);
 router.get('/pending-events', getPendingEvents);
 
 module.exports = router;

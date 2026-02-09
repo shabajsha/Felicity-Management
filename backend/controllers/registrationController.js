@@ -208,7 +208,8 @@ exports.registerForEvent = async (req, res, next) => {
     await registration.populate('event', 'title date venue');
 
     let issued = registration;
-    if (['paid', 'free'].includes(paymentStatus)) {
+    const shouldIssueTicket = event.type !== 'Merchandise' || ['paid', 'free'].includes(paymentStatus);
+    if (shouldIssueTicket) {
       issued = await issueTicket(registration, event);
     }
 

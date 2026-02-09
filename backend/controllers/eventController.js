@@ -1,6 +1,7 @@
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const User = require('../models/User');
+const { postEventToDiscord } = require('../utils/discord');
 
 const computeLifecycleStatus = (event) => {
   if (event.isClosed) return 'closed';
@@ -447,6 +448,10 @@ exports.approveEvent = async (req, res, next) => {
     }
 
     await event.save();
+
+    if (status === 'approved') {
+      postEventToDiscord(event);
+    }
 
     res.status(200).json({
       success: true,

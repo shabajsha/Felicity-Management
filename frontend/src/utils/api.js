@@ -257,6 +257,8 @@ export const adminAPI = {
     return apiCall(`/admin/users${queryString ? `?${queryString}` : ''}`);
   },
 
+  getAllEvents: () => apiCall('/admin/events'),
+
   getUser: (id) => apiCall(`/admin/users/${id}`),
 
   updateUser: (id, userData) =>

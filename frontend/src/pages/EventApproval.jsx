@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../components/Toast';
-import { eventsAPI } from '../utils/api';
+import { adminAPI, eventsAPI } from '../utils/api';
 import { formatDate, formatEventDate, getOrganizerName } from '../utils/helpers';
 import './EventApproval.css';
 
@@ -22,7 +22,7 @@ const EventApproval = () => {
     const load = async () => {
       try {
         setLoading(true);
-        const res = await eventsAPI.getAll();
+        const res = await adminAPI.getAllEvents();
         if (res.success) {
           setEvents(res.data || []);
         } else {

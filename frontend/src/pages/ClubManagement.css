@@ -6,6 +6,10 @@
 
 .page-header {
   margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
 }
 
 .page-header h1 {
@@ -63,6 +67,52 @@
 .search-box input:focus {
   outline: none;
   border-color: #007bff;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #333;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+  padding: 0.7rem 0.85rem;
+  border: 2px solid #e5e5e5;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.form-group textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.input-error {
+  border-color: #dc2626;
+}
+
+.error-text {
+  color: #dc2626;
+  font-size: 0.8rem;
 }
 
 /* Clubs Table */

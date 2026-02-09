@@ -41,6 +41,8 @@ export function AuthProvider({ children }) {
         ...response.user,
         token: response.token
       };
+      // Persist token before fetching profile so auth header is available.
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
       try {
         const me = await authAPI.getMe();
         userData = { ...userData, ...me.data };

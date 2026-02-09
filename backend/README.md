@@ -61,6 +61,7 @@ MONGODB_URI=mongodb://localhost:27017/event_management
 JWT_SECRET=your_secret_key
 JWT_EXPIRE=7d
 FRONTEND_URL=http://localhost:5174
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook
 ```
 
 ### Next Phases:

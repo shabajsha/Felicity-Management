@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/Toast';
 import { formatDate } from '../utils/helpers';
 import { adminAPI } from '../utils/api';
+import { ORGANIZER_CATEGORIES } from '../utils/constants';
 import './UserManagement.css';
 
 const initialOrganizer = {
@@ -31,6 +32,7 @@ const UserManagement = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newOrganizer, setNewOrganizer] = useState(initialOrganizer);
+  const [newOrganizerErrors, setNewOrganizerErrors] = useState({});
   const [createdCreds, setCreatedCreds] = useState(null);
   const [resetCreds, setResetCreds] = useState(null);
 
@@ -126,8 +128,33 @@ const UserManagement = () => {
     }
   };
 
+  const validateOrganizer = () => {
+    const errors = {};
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!newOrganizer.firstName.trim()) errors.firstName = 'First name is required';
+    if (!newOrganizer.lastName.trim()) errors.lastName = 'Last name is required';
+    if (!newOrganizer.email.trim()) errors.email = 'Login email is required';
+    if (newOrganizer.email && !emailRegex.test(newOrganizer.email)) errors.email = 'Enter a valid email';
+    if (!newOrganizer.contactNumber.trim()) errors.contactNumber = 'Contact number is required';
+    if (!newOrganizer.organizerName.trim()) errors.organizerName = 'Organizer name is required';
+    if (!newOrganizer.category.trim()) errors.category = 'Category is required';
+    if (!newOrganizer.description.trim()) errors.description = 'Description is required';
+    if (!newOrganizer.contactEmail.trim()) errors.contactEmail = 'Contact email is required';
+    if (newOrganizer.contactEmail && !emailRegex.test(newOrganizer.contactEmail)) {
+      errors.contactEmail = 'Enter a valid contact email';
+    }
+
+    setNewOrganizerErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCreateOrganizer = async () => {
     try {
+      if (!validateOrganizer()) {
+        showError('Please fix the form errors');
+        return;
+      }
       setCreating(true);
       const res = await adminAPI.createOrganizer(newOrganizer);
       if (res.success) {
@@ -135,6 +162,7 @@ const UserManagement = () => {
         setCreatedCreds(res.credentials);
         showSuccess('Organizer created');
         setNewOrganizer(initialOrganizer);
+        setNewOrganizerErrors({});
       }
     } catch (err) {
       showError(err.message || 'Failed to create organizer');
@@ -297,16 +325,134 @@ const UserManagement = () => {
               <h2>Create Organizer</h2>
               <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
             </div>
-            <div className="modal-body grid-2">
-              <label>First Name<input value={newOrganizer.firstName} onChange={e => setNewOrganizer({ ...newOrganizer, firstName: e.target.value })} /></label>
-              <label>Last Name<input value={newOrganizer.lastName} onChange={e => setNewOrganizer({ ...newOrganizer, lastName: e.target.value })} /></label>
-              <label>Email<input type="email" value={newOrganizer.email} onChange={e => setNewOrganizer({ ...newOrganizer, email: e.target.value })} /></label>
-              <label>Contact Number<input value={newOrganizer.contactNumber} onChange={e => setNewOrganizer({ ...newOrganizer, contactNumber: e.target.value })} /></label>
-              <label>Organizer Name<input value={newOrganizer.organizerName} onChange={e => setNewOrganizer({ ...newOrganizer, organizerName: e.target.value })} /></label>
-              <label>Category<input value={newOrganizer.category} onChange={e => setNewOrganizer({ ...newOrganizer, category: e.target.value })} /></label>
-              <label>Description<textarea value={newOrganizer.description} onChange={e => setNewOrganizer({ ...newOrganizer, description: e.target.value })} /></label>
-              <label>Contact Email<input type="email" value={newOrganizer.contactEmail} onChange={e => setNewOrganizer({ ...newOrganizer, contactEmail: e.target.value })} /></label>
-              <label>Contact Phone<input value={newOrganizer.contactPhone} onChange={e => setNewOrganizer({ ...newOrganizer, contactPhone: e.target.value })} /></label>
+            <div className="modal-body">
+              <div className="form-section">
+                <h3 className="section-title">Account</h3>
+                <div className="form-grid">
+                  <label className="form-group">
+                    First Name *
+                    <input
+                      value={newOrganizer.firstName}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, firstName: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, firstName: '' }));
+                      }}
+                      className={newOrganizerErrors.firstName ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.firstName && <span className="error-text">{newOrganizerErrors.firstName}</span>}
+                  </label>
+                  <label className="form-group">
+                    Last Name *
+                    <input
+                      value={newOrganizer.lastName}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, lastName: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, lastName: '' }));
+                      }}
+                      className={newOrganizerErrors.lastName ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.lastName && <span className="error-text">{newOrganizerErrors.lastName}</span>}
+                  </label>
+                  <label className="form-group">
+                    Login Email *
+                    <input
+                      type="email"
+                      value={newOrganizer.email}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, email: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, email: '' }));
+                      }}
+                      className={newOrganizerErrors.email ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.email && <span className="error-text">{newOrganizerErrors.email}</span>}
+                  </label>
+                  <label className="form-group">
+                    Contact Number *
+                    <input
+                      value={newOrganizer.contactNumber}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, contactNumber: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, contactNumber: '' }));
+                      }}
+                      className={newOrganizerErrors.contactNumber ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.contactNumber && <span className="error-text">{newOrganizerErrors.contactNumber}</span>}
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h3 className="section-title">Organizer Profile</h3>
+                <div className="form-grid">
+                  <label className="form-group">
+                    Organizer Name *
+                    <input
+                      value={newOrganizer.organizerName}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, organizerName: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, organizerName: '' }));
+                      }}
+                      className={newOrganizerErrors.organizerName ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.organizerName && <span className="error-text">{newOrganizerErrors.organizerName}</span>}
+                  </label>
+                  <label className="form-group">
+                    Category *
+                    <select
+                      value={newOrganizer.category}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, category: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, category: '' }));
+                      }}
+                      className={newOrganizerErrors.category ? 'input-error' : ''}
+                    >
+                      <option value="">Select</option>
+                      {ORGANIZER_CATEGORIES.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                    {newOrganizerErrors.category && <span className="error-text">{newOrganizerErrors.category}</span>}
+                  </label>
+                  <label className="form-group full-width">
+                    Description *
+                    <textarea
+                      value={newOrganizer.description}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, description: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, description: '' }));
+                      }}
+                      className={newOrganizerErrors.description ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.description && <span className="error-text">{newOrganizerErrors.description}</span>}
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-section">
+                <h3 className="section-title">Public Contact</h3>
+                <div className="form-grid">
+                  <label className="form-group">
+                    Contact Email *
+                    <input
+                      type="email"
+                      value={newOrganizer.contactEmail}
+                      onChange={e => {
+                        setNewOrganizer({ ...newOrganizer, contactEmail: e.target.value });
+                        setNewOrganizerErrors(prev => ({ ...prev, contactEmail: '' }));
+                      }}
+                      className={newOrganizerErrors.contactEmail ? 'input-error' : ''}
+                    />
+                    {newOrganizerErrors.contactEmail && <span className="error-text">{newOrganizerErrors.contactEmail}</span>}
+                  </label>
+                  <label className="form-group">
+                    Contact Phone
+                    <input
+                      value={newOrganizer.contactPhone}
+                      onChange={e => setNewOrganizer({ ...newOrganizer, contactPhone: e.target.value })}
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
@@ -324,7 +470,16 @@ const UserManagement = () => {
       )}
 
       <div className="floating-action">
-        <button className="btn-primary" onClick={() => { setShowCreateModal(true); setCreatedCreds(null); }}>+ Create Organizer</button>
+        <button
+          className="btn-primary"
+          onClick={() => {
+            setShowCreateModal(true);
+            setCreatedCreds(null);
+            setNewOrganizerErrors({});
+          }}
+        >
+          + Create Organizer
+        </button>
       </div>
     </div>
   );

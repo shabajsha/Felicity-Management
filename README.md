@@ -111,6 +111,7 @@ SMTP_PORT=587
 SMTP_USER=your_smtp_user
 SMTP_PASS=your_smtp_pass
 SMTP_FROM=no-reply@eventhub.local
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook
 ```
 
 ## 📚 API Documentation

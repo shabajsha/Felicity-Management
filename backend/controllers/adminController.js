@@ -280,6 +280,26 @@ exports.getSystemStats = async (req, res, next) => {
   }
 };
 
+// @desc    Get all events (admin only)
+// @route   GET /api/admin/events
+// @access  Private (Admin only)
+exports.getAllEvents = async (req, res, next) => {
+  try {
+    const events = await Event.find()
+      .populate('organizer', 'firstName lastName email')
+      .populate('clubId', 'name')
+      .sort('-createdAt');
+
+    res.status(200).json({
+      success: true,
+      count: events.length,
+      data: events
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Get pending events for approval
 // @route   GET /api/admin/pending-events
 // @access  Private (Admin only)
