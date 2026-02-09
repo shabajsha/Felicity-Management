@@ -43,7 +43,7 @@ function Login() {
     return '';
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const msg = validate();
     if (msg) {
@@ -51,20 +51,18 @@ function Login() {
       return;
     }
 
-    // Mock authentication - In real app, this would call backend API
-    const user = MOCK_USERS.find(u => u.email === email && u.password === password && u.role === role);
+    // Call backend API
+    const result = await login({ email, password });
     
-    if (user) {
-      const userData = { ...user };
-      delete userData.password; // Remove password before storing
+    if (result.success) {
+      showSuccess(`Welcome back!`);
       
-      login(userData);
-      showSuccess(`Welcome back, ${userData.firstName || userData.role}!`);
-      
-      const redirectTo = location.state?.from || ROLE_REDIRECT[role] || '/';
+      // Redirect based on user role
+      const userRole = result.user?.role || USER_ROLES.PARTICIPANT;
+      const redirectTo = location.state?.from || ROLE_REDIRECT[userRole] || '/';
       navigate(redirectTo, { replace: true });
     } else {
-      setError('Invalid credentials or role mismatch');
+      setError(result.error || 'Invalid credentials');
       showError('Login failed. Please check your credentials.');
     }
     
