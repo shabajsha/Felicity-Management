@@ -19,6 +19,8 @@ const PaymentApproval = () => {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const assetBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -46,16 +48,16 @@ const PaymentApproval = () => {
     if (!organizerId) return [];
     return events.filter(e => {
       const orgId = e.organizer?._id || e.organizer || e.organizerId;
-      return orgId === organizerId && (e.requiresPayment || e.paymentAmount);
+      return orgId === organizerId && (e.requiresPayment || (e.registrationFee || 0) > 0);
     });
   }, [events, user]);
 
   // Get payment registrations
   const paymentRegistrations = useMemo(() => {
-    const eventIds = paymentEvents.map(e => e.id || e._id);
+    const eventIds = paymentEvents.map(e => (e._id || e.id)?.toString());
     return registrations
       .filter(reg => {
-        const regEventId = reg.event?._id || reg.event || reg.eventId;
+        const regEventId = (reg.event?._id || reg.event || reg.eventId)?.toString();
         return eventIds.includes(regEventId);
       })
       .filter(reg => reg.paymentStatus !== 'free')
@@ -72,8 +74,8 @@ const PaymentApproval = () => {
 
     if (selectedEventFilter !== 'all') {
       filtered = filtered.filter(p => {
-        const regEventId = p.event?._id || p.event || p.eventId;
-        return regEventId == selectedEventFilter;
+        const regEventId = (p.event?._id || p.event || p.eventId)?.toString();
+        return regEventId === selectedEventFilter;
       });
     }
 
@@ -192,7 +194,7 @@ const PaymentApproval = () => {
             <select value={selectedEventFilter} onChange={(e) => setSelectedEventFilter(e.target.value)}>
               <option value="all">All Events</option>
               {paymentEvents.map(event => (
-                <option key={event.id || event._id} value={event.id || event._id}>{event.title}</option>
+                <option key={event._id || event.id} value={event._id || event.id}>{event.title}</option>
               ))}
             </select>
           </div>
@@ -253,7 +255,7 @@ const PaymentApproval = () => {
 
               {payment.paymentScreenshot && (
                 <div className="payment-screenshot">
-                  <img src={payment.paymentScreenshot} alt="Payment proof" />
+                  <img src={`${assetBase}${payment.paymentScreenshot}`} alt="Payment proof" />
                 </div>
               )}
 
@@ -341,6 +343,13 @@ const PaymentApproval = () => {
                   <span className="value">{formatDate(selectedPayment.registeredAt || selectedPayment.createdAt)}</span>
                 </div>
               </div>
+
+              {selectedPayment.paymentScreenshot && (
+                <div className="detail-section">
+                  <h3>Payment Proof</h3>
+                  <img src={`${assetBase}${selectedPayment.paymentScreenshot}`} alt="Payment proof" className="payment-proof-image" />
+                </div>
+              )}
 
               {selectedPayment.paymentScreenshot && (
                 <div className="detail-section">

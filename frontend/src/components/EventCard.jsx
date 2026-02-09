@@ -8,7 +8,9 @@ function EventCard({ event, onDelete, onRegister }) {
   const { user } = useAuth();
 
   const availabilityStatus = getEventAvailability(event);
-  const isFull = event.registered >= event.capacity;
+  const capacity = event.capacity || event.maxParticipants || 0;
+  const registered = event.registered || 0;
+  const isFull = capacity > 0 && registered >= capacity;
   const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
   const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
   const organizerDisplayName = getOrganizerName(event.organizer, event.organizerName);
@@ -64,11 +66,11 @@ function EventCard({ event, onDelete, onRegister }) {
           <div className="progress-bar">
             <div 
               className={`progress-fill ${availabilityStatus.class}`}
-              style={{ width: `${(event.registered / event.capacity) * 100}%` }}
+              style={{ width: `${capacity > 0 ? (registered / capacity) * 100 : 0}%` }}
             ></div>
           </div>
           <span className="progress-text">
-            {event.registered} / {event.capacity} registered
+            {registered} / {capacity} registered
           </span>
         </div>
       </div>

@@ -358,3 +358,44 @@ exports.createOrganizer = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Reset organizer password (admin only)
+// @route   PUT /api/admin/users/:id/reset-password
+// @access  Private (Admin only)
+exports.resetOrganizerPassword = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id).select('+password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    if (user.role !== 'Organizer') {
+      return res.status(400).json({
+        success: false,
+        message: 'Password reset is only supported for organizers'
+      });
+    }
+
+    const password = generatePassword();
+    user.password = password;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: user._id,
+        email: user.email
+      },
+      credentials: {
+        email: user.email,
+        password
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};

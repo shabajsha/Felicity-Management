@@ -1,3 +1,10 @@
+.ticket-qr {
+  max-width: 200px;
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f9fafb;
+}
 .registration-management {
   padding: 2rem;
   max-width: 1400px;

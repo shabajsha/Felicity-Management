@@ -20,6 +20,13 @@ export const EVENT_TYPES = {
   MERCHANDISE: 'Merchandise',
 };
 
+// Event Participant Types
+export const EVENT_PARTICIPANT_TYPES = {
+  INDIVIDUAL: 'Individual',
+  TEAM: 'Team',
+  BOTH: 'Both',
+};
+
 // Event Status
 export const EVENT_STATUS = {
   DRAFT: 'draft',
@@ -38,6 +45,7 @@ export const EVENT_STATUS = {
 // Registration Status
 export const REGISTRATION_STATUS = {
   PENDING: 'pending',
+  APPROVED: 'approved',
   CONFIRMED: 'confirmed',
   CANCELLED: 'cancelled',
   REJECTED: 'rejected',
@@ -75,6 +83,16 @@ export const ORGANIZER_CATEGORIES = [
   'Council',
   'Fest Team',
   'Other',
+];
+
+// Club Categories
+export const CLUB_CATEGORIES = [
+  'Technical',
+  'Cultural',
+  'Sports',
+  'Academic',
+  'Social',
+  'Arts',
 ];
 
 // Areas of Interest

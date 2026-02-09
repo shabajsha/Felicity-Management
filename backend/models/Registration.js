@@ -36,7 +36,7 @@ const registrationSchema = new mongoose.Schema({
   },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'failed', 'free'],
+    enum: ['pending', 'paid', 'failed', 'free', 'refunded'],
     default: 'pending'
   },
   paymentAmount: {
@@ -53,6 +53,14 @@ const registrationSchema = new mongoose.Schema({
   },
   paymentScreenshot: {
     type: String
+  },
+  merchandise: {
+    size: { type: String, trim: true },
+    color: { type: String, trim: true },
+    variantSku: { type: String, trim: true },
+    quantity: { type: Number, min: 1, default: 1 },
+    unitPrice: { type: Number, min: 0, default: 0 },
+    totalPrice: { type: Number, min: 0, default: 0 }
   },
   transactionId: {
     type: String
@@ -83,6 +91,12 @@ const registrationSchema = new mongoose.Schema({
     default: false
   },
   checkInTime: {
+    type: Date
+  },
+  ticketQr: {
+    type: String
+  },
+  ticketIssuedAt: {
     type: Date
   },
   registrationDate: {

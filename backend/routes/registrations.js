@@ -9,9 +9,11 @@ const {
   updatePaymentStatus,
   checkInParticipant,
   getRegistrationStats,
-  getOrganizerRegistrations
+  getOrganizerRegistrations,
+  uploadPaymentProof
 } = require('../controllers/registrationController');
 const { protect, authorize } = require('../middleware/auth');
+const upload = require('../middleware/upload');
 
 const router = express.Router();
 
@@ -19,6 +21,7 @@ const router = express.Router();
 router.post('/', protect, authorize('Participant', 'Organizer', 'Admin'), registerForEvent);
 router.get('/my-registrations', protect, authorize('Participant', 'Organizer', 'Admin'), getMyRegistrations);
 router.put('/:id/cancel', protect, authorize('Participant', 'Organizer', 'Admin'), cancelRegistration);
+router.post('/:id/payment-proof', protect, upload.single('proof'), uploadPaymentProof);
 // Organizer routes (more specific paths must be registered before :id)
 router.get('/event/:eventId', protect, authorize('Organizer', 'Admin'), getEventRegistrations);
 router.put('/:id/payment', protect, authorize('Organizer', 'Admin'), updatePaymentStatus);

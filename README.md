@@ -106,6 +106,11 @@ JWT_EXPIRE=7d
 FRONTEND_URL=http://localhost:5174
 MAX_FILE_SIZE=5242880
 UPLOAD_PATH=./uploads
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your_smtp_user
+SMTP_PASS=your_smtp_pass
+SMTP_FROM=no-reply@eventhub.local
 ```
 
 ## 📚 API Documentation

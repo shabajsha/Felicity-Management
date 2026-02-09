@@ -3,7 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
-import { EVENT_TYPES, EVENT_CATEGORIES, PARTICIPANT_TYPES } from '../utils/constants';
+import { EVENT_TYPES, EVENT_CATEGORIES, EVENT_PARTICIPANT_TYPES } from '../utils/constants';
+import { eventsAPI } from '../utils/api';
 import './EventFormBuilder.css';
 
 const EventFormBuilder = () => {
@@ -14,12 +15,13 @@ const EventFormBuilder = () => {
   const { showSuccess, showError } = useToast();
 
   const isEditMode = !!id;
-  const existingEvent = isEditMode ? events.find(e => e.id === id) : null;
+  const existingEvent = isEditMode ? events.find(e => (e._id || e.id) === id) : null;
 
   const [eventData, setEventData] = useState({
     title: '',
     description: '',
     date: '',
+    endDate: '',
     time: '',
     location: '',
     venue: '',
@@ -27,7 +29,8 @@ const EventFormBuilder = () => {
     category: 'Technical',
     maxParticipants: 50,
     registrationDeadline: '',
-    participantType: PARTICIPANT_TYPES.INDIVIDUAL,
+    eligibility: 'All',
+    participantType: EVENT_PARTICIPANT_TYPES.INDIVIDUAL,
     allowTeams: false,
     minTeamSize: 2,
     maxTeamSize: 5,
@@ -36,6 +39,16 @@ const EventFormBuilder = () => {
     requiresPayment: false,
     imageUrl: '',
     tags: []
+  });
+
+  const [merchandiseData, setMerchandiseData] = useState({
+    itemName: '',
+    description: '',
+    sizes: '',
+    colors: '',
+    stock: 0,
+    purchaseLimit: 1,
+    variants: []
   });
 
   const [customFields, setCustomFields] = useState([]);
@@ -54,6 +67,7 @@ const EventFormBuilder = () => {
         title: existingEvent.title,
         description: existingEvent.description,
         date: existingEvent.date.split('T')[0],
+        endDate: existingEvent.endDate ? existingEvent.endDate.split('T')[0] : existingEvent.date.split('T')[0],
         time: existingEvent.time || '',
         location: existingEvent.location,
         venue: existingEvent.venue || '',
@@ -61,6 +75,7 @@ const EventFormBuilder = () => {
         category: existingEvent.category,
         maxParticipants: existingEvent.maxParticipants,
         registrationDeadline: existingEvent.registrationDeadline?.split('T')[0] || '',
+        eligibility: existingEvent.eligibility || 'All',
         participantType: existingEvent.participantType,
         allowTeams: existingEvent.allowTeams || false,
         minTeamSize: existingEvent.minTeamSize || 2,
@@ -72,6 +87,17 @@ const EventFormBuilder = () => {
         tags: existingEvent.tags || []
       });
       setCustomFields(existingEvent.customFields || []);
+      if (existingEvent.merchandise) {
+        setMerchandiseData({
+          itemName: existingEvent.merchandise.itemName || '',
+          description: existingEvent.merchandise.description || '',
+          sizes: (existingEvent.merchandise.sizes || []).join(', '),
+          colors: (existingEvent.merchandise.colors || []).join(', '),
+          stock: existingEvent.merchandise.stock || 0,
+          purchaseLimit: existingEvent.merchandise.purchaseLimit || 1,
+          variants: existingEvent.merchandise.variants || []
+        });
+      }
     }
   }, [isEditMode, existingEvent]);
 
@@ -85,6 +111,39 @@ const EventFormBuilder = () => {
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+  };
+
+  const handleMerchandiseChange = (e) => {
+    const { name, value } = e.target;
+    setMerchandiseData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleVariantChange = (index, field, value) => {
+    setMerchandiseData(prev => {
+      const next = [...prev.variants];
+      next[index] = { ...next[index], [field]: value };
+      return { ...prev, variants: next };
+    });
+  };
+
+  const handleAddVariant = () => {
+    setMerchandiseData(prev => ({
+      ...prev,
+      variants: [
+        ...prev.variants,
+        { sku: '', size: '', color: '', price: 0, stock: 0 }
+      ]
+    }));
+  };
+
+  const handleRemoveVariant = (index) => {
+    setMerchandiseData(prev => ({
+      ...prev,
+      variants: prev.variants.filter((_, i) => i !== index)
+    }));
   };
 
   const handleAddTag = () => {
@@ -162,21 +221,32 @@ const EventFormBuilder = () => {
     if (!eventData.description.trim()) newErrors.description = 'Description is required';
     else if (eventData.description.trim().length < 20) newErrors.description = 'Description must be at least 20 characters';
     if (!eventData.date) newErrors.date = 'Date is required';
+    if (!eventData.endDate) newErrors.endDate = 'End date is required';
     if (!eventData.location.trim()) newErrors.location = 'Location is required';
     if (!eventData.category) newErrors.category = 'Category is required';
     if (!eventData.type) newErrors.type = 'Type is required';
     if (eventData.maxParticipants < 1) newErrors.maxParticipants = 'Max participants must be at least 1';
     
     const eventDate = new Date(eventData.date);
+    const eventEndDate = eventData.endDate ? new Date(eventData.endDate) : eventDate;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (eventDate < today) newErrors.date = 'Event date cannot be in the past';
+    if (eventEndDate < eventDate) newErrors.endDate = 'End date must be on or after start date';
     
     if (eventData.registrationDeadline) {
       const deadline = new Date(eventData.registrationDeadline);
       if (deadline > eventDate) {
         newErrors.registrationDeadline = 'Registration deadline must be before event date';
       }
+    }
+
+    if (eventData.type === 'Merchandise') {
+      if (!merchandiseData.itemName.trim()) newErrors.merchandiseItemName = 'Item name is required';
+      if (Number(merchandiseData.stock) < 1 && (!merchandiseData.variants || merchandiseData.variants.length === 0)) {
+        newErrors.merchandiseStock = 'Stock or variants are required for merchandise';
+      }
+      if (Number(merchandiseData.purchaseLimit) < 1) newErrors.merchandisePurchaseLimit = 'Purchase limit must be at least 1';
     }
 
     if (eventData.allowTeams) {
@@ -190,7 +260,7 @@ const EventFormBuilder = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e, publishNow = false) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -209,6 +279,7 @@ const EventFormBuilder = () => {
       ...eventData,
       organizer: organizerId,
       organizerName,
+      publishNow,
       capacity: Number(eventData.maxParticipants) || 0,
       maxParticipants: Number(eventData.maxParticipants) || 0,
       registrationFee: Number(eventData.registrationFee) || 0,
@@ -219,6 +290,23 @@ const EventFormBuilder = () => {
       type: eventData.type || 'Event',
       category: eventData.category || 'Technical',
       customFields,
+      endDate: eventData.endDate,
+      eligibility: eventData.eligibility || 'All',
+      merchandise: eventData.type === 'Merchandise' ? {
+        itemName: merchandiseData.itemName,
+        description: merchandiseData.description,
+        sizes: merchandiseData.sizes.split(',').map(s => s.trim()).filter(Boolean),
+        colors: merchandiseData.colors.split(',').map(c => c.trim()).filter(Boolean),
+        stock: Number(merchandiseData.stock) || 0,
+        purchaseLimit: Number(merchandiseData.purchaseLimit) || 1,
+        variants: (merchandiseData.variants || []).map(v => ({
+          sku: v.sku,
+          size: v.size,
+          color: v.color,
+          price: Number(v.price) || 0,
+          stock: Number(v.stock) || 0
+        }))
+      } : undefined,
       createdAt: existingEvent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -226,11 +314,17 @@ const EventFormBuilder = () => {
     try {
       if (isEditMode) {
         await updateEvent(id, eventPayload);
+        if (publishNow) {
+          await eventsAPI.publish(id);
+        }
         showSuccess('Event updated successfully!');
         navigate(`/event/${id}`);
       } else {
         const newEventId = await addEvent(eventPayload);
         if (newEventId) {
+          if (publishNow) {
+            await eventsAPI.publish(newEventId);
+          }
           showSuccess('Event created successfully!');
           navigate(`/event/${newEventId}`);
         } else {
@@ -395,6 +489,21 @@ const EventFormBuilder = () => {
             </div>
 
             <div className="form-group">
+              <label htmlFor="endDate">Event End Date *</label>
+              <input
+                type="date"
+                id="endDate"
+                name="endDate"
+                value={eventData.endDate}
+                onChange={handleInputChange}
+                className={errors.endDate ? 'error' : ''}
+              />
+              {errors.endDate && <span className="error-message">{errors.endDate}</span>}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
               <label htmlFor="time">Event Time</label>
               <input
                 type="time"
@@ -468,6 +577,20 @@ const EventFormBuilder = () => {
             </div>
           </div>
 
+          <div className="form-group">
+            <label htmlFor="eligibility">Eligibility</label>
+            <select
+              id="eligibility"
+              name="eligibility"
+              value={eventData.eligibility}
+              onChange={handleInputChange}
+            >
+              <option value="All">All</option>
+              <option value="IIIT">IIIT Only</option>
+              <option value="Non-IIIT">External Only</option>
+            </select>
+          </div>
+
           <div className="form-group checkbox-group">
             <label>
               <input
@@ -488,7 +611,7 @@ const EventFormBuilder = () => {
               value={eventData.participantType}
               onChange={handleInputChange}
             >
-              {Object.values(PARTICIPANT_TYPES).map(type => (
+              {Object.values(EVENT_PARTICIPANT_TYPES).map(type => (
                 <option key={type} value={type}>{type}</option>
               ))}
             </select>
@@ -538,6 +661,139 @@ const EventFormBuilder = () => {
             </div>
           )}
         </section>
+
+        {eventData.type === 'Merchandise' && (
+          <section className="form-section">
+            <h2>Merchandise Details</h2>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Item Name *</label>
+                <input
+                  type="text"
+                  name="itemName"
+                  value={merchandiseData.itemName}
+                  onChange={handleMerchandiseChange}
+                  className={errors.merchandiseItemName ? 'error' : ''}
+                />
+                {errors.merchandiseItemName && <span className="error-message">{errors.merchandiseItemName}</span>}
+              </div>
+              <div className="form-group">
+                <label>Purchase Limit *</label>
+                <input
+                  type="number"
+                  name="purchaseLimit"
+                  min="1"
+                  value={merchandiseData.purchaseLimit}
+                  onChange={handleMerchandiseChange}
+                  className={errors.merchandisePurchaseLimit ? 'error' : ''}
+                />
+                {errors.merchandisePurchaseLimit && <span className="error-message">{errors.merchandisePurchaseLimit}</span>}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>Description</label>
+              <textarea
+                name="description"
+                value={merchandiseData.description}
+                onChange={handleMerchandiseChange}
+                rows="3"
+              />
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Sizes (comma separated)</label>
+                <input
+                  type="text"
+                  name="sizes"
+                  value={merchandiseData.sizes}
+                  onChange={handleMerchandiseChange}
+                  placeholder="S, M, L, XL"
+                />
+              </div>
+              <div className="form-group">
+                <label>Colors (comma separated)</label>
+                <input
+                  type="text"
+                  name="colors"
+                  value={merchandiseData.colors}
+                  onChange={handleMerchandiseChange}
+                  placeholder="Black, White"
+                />
+              </div>
+            </div>
+
+            <div className="form-row">
+              <div className="form-group">
+                <label>Stock (fallback)</label>
+                <input
+                  type="number"
+                  name="stock"
+                  min="0"
+                  value={merchandiseData.stock}
+                  onChange={handleMerchandiseChange}
+                  className={errors.merchandiseStock ? 'error' : ''}
+                />
+                {errors.merchandiseStock && <span className="error-message">{errors.merchandiseStock}</span>}
+              </div>
+            </div>
+
+            <div className="variants-section">
+              <div className="variants-header">
+                <h3>Variants</h3>
+                <button type="button" className="btn-secondary" onClick={handleAddVariant}>
+                  + Add Variant
+                </button>
+              </div>
+
+              {merchandiseData.variants.length === 0 && (
+                <p className="section-description">Add variants to track size/color-specific stock and price.</p>
+              )}
+
+              {merchandiseData.variants.map((variant, index) => (
+                <div key={index} className="variant-row">
+                  <input
+                    type="text"
+                    placeholder="SKU"
+                    value={variant.sku}
+                    onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Size"
+                    value={variant.size}
+                    onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Color"
+                    value={variant.color}
+                    onChange={(e) => handleVariantChange(index, 'color', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Price"
+                    min="0"
+                    value={variant.price}
+                    onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    placeholder="Stock"
+                    min="0"
+                    value={variant.stock}
+                    onChange={(e) => handleVariantChange(index, 'stock', e.target.value)}
+                  />
+                  <button type="button" className="btn-danger-small" onClick={() => handleRemoveVariant(index)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Payment Settings */}
         <section className="form-section">
@@ -711,8 +967,11 @@ const EventFormBuilder = () => {
           <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
             Cancel
           </button>
-          <button type="submit" className="btn-primary">
-            {isEditMode ? 'Update Event' : 'Create Event'}
+          <button type="button" className="btn-secondary" onClick={(e) => handleSubmit(e, false)}>
+            {isEditMode ? 'Save Draft' : 'Save Draft'}
+          </button>
+          <button type="button" className="btn-primary" onClick={(e) => handleSubmit(e, true)}>
+            {isEditMode ? 'Publish Updates' : 'Publish Event'}
           </button>
         </div>
       </form>

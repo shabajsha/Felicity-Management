@@ -58,7 +58,11 @@ function Login() {
       
       // Redirect based on user role
       const userRole = result.user?.role || USER_ROLES.PARTICIPANT;
-      const redirectTo = location.state?.from || ROLE_REDIRECT[userRole] || '/';
+      const hasPrefs = (result.user?.preferences?.interests?.length || 0) > 0
+        || (result.user?.preferences?.followedClubs?.length || 0) > 0;
+      const redirectTo = userRole === USER_ROLES.PARTICIPANT && !hasPrefs
+        ? '/onboarding'
+        : (location.state?.from || ROLE_REDIRECT[userRole] || '/');
       navigate(redirectTo, { replace: true });
     } else {
       setError(result.error || 'Invalid credentials');

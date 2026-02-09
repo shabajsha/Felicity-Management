@@ -1,19 +1,25 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import EventCard from './EventCard';
 import { searchEvents, filterEvents, sortEvents } from '../utils/helpers';
-import { EVENT_TYPES, ELIGIBILITY_TYPES } from '../utils/constants';
+import { EVENT_TYPES, EVENT_CATEGORIES } from '../utils/constants';
 import { eventsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext.jsx';
 import './EventList.css';
 
 function EventList({ events: propEvents, onDelete, onRegister }) {
+  const { user } = useAuth();
   const [events, setEvents] = useState(propEvents || []);
   const [loading, setLoading] = useState(!propEvents);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('All');
+  const [filterCategory, setFilterCategory] = useState('All');
   const [filterEligibility, setFilterEligibility] = useState('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [followedOnly, setFollowedOnly] = useState(false);
   const [sortBy, setSortBy] = useState('date');
+  const [trendingEvents, setTrendingEvents] = useState([]);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -38,15 +44,35 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
     }
   }, [propEvents]);
 
+  useEffect(() => {
+    const fetchTrending = async () => {
+      try {
+        const response = await eventsAPI.getAllEvents({ trending: 'true' });
+        if (response.success) {
+          setTrendingEvents(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching trending events:', err);
+      }
+    };
+
+    fetchTrending();
+  }, []);
+
   const filteredEvents = useMemo(() => {
     let result = searchEvents(events, searchTerm);
     result = filterEvents(result, { 
       type: filterType !== 'All' ? filterType : null,
-      eligibility: filterEligibility !== 'All' ? filterEligibility : null 
+      category: filterCategory !== 'All' ? filterCategory : null,
+      eligibility: filterEligibility !== 'All' ? filterEligibility : null,
+      dateFrom: dateFrom || null,
+      dateTo: dateTo || null,
+      followedOnly,
+      followedClubs: (user?.preferences?.followedClubs || []).map(c => c._id || c)
     });
     result = sortEvents(result, sortBy);
     return result;
-  }, [events, searchTerm, filterType, filterEligibility, sortBy]);
+  }, [events, searchTerm, filterType, filterCategory, filterEligibility, dateFrom, dateTo, followedOnly, sortBy, user]);
 
   return (
     <div className="event-list-container">
@@ -54,6 +80,22 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
         <h2>Upcoming Events</h2>
         <p className="subtitle">Discover and join amazing events near you</p>
       </div>
+
+      {trendingEvents.length > 0 && (
+        <div className="trending-section">
+          <h3>Trending Now</h3>
+          <div className="events-grid">
+            {trendingEvents.map(event => (
+              <EventCard
+                key={event._id || event.id}
+                event={event}
+                onDelete={onDelete}
+                onRegister={onRegister}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="controls">
         <div className="search-box">
@@ -73,19 +115,20 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
             className="filter-select"
           >
             <option value="All">All Types</option>
-            <option value={EVENT_TYPES.NORMAL}>Normal Events</option>
-            <option value={EVENT_TYPES.MERCHANDISE}>Merchandise</option>
+            {Object.values(EVENT_TYPES).map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </select>
 
           <select 
-            value={filterEligibility} 
-            onChange={(e) => setFilterEligibility(e.target.value)}
+            value={filterCategory} 
+            onChange={(e) => setFilterCategory(e.target.value)}
             className="filter-select"
           >
-            <option value="All">All Eligibility</option>
-            <option value={ELIGIBILITY_TYPES.ALL}>All Participants</option>
-            <option value={ELIGIBILITY_TYPES.IIIT_ONLY}>IIIT Only</option>
-            <option value={ELIGIBILITY_TYPES.EXTERNAL_ONLY}>External Only</option>
+            <option value="All">All Categories</option>
+            {EVENT_CATEGORIES.map(cat => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
           </select>
 
           <select 
@@ -97,6 +140,37 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
             <option value="title">Sort by Title</option>
             <option value="capacity">Sort by Capacity</option>
           </select>
+        </div>
+        <div className="filters">
+          <select
+            value={filterEligibility}
+            onChange={(e) => setFilterEligibility(e.target.value)}
+            className="filter-select"
+          >
+            <option value="All">All Eligibility</option>
+            <option value="IIIT">IIIT Only</option>
+            <option value="Non-IIIT">External Only</option>
+          </select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="filter-select"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="filter-select"
+          />
+          <label className="filter-toggle">
+            <input
+              type="checkbox"
+              checked={followedOnly}
+              onChange={(e) => setFollowedOnly(e.target.checked)}
+            />
+            Followed Clubs
+          </label>
         </div>
       </div>
 
@@ -116,7 +190,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
         <div className="events-grid">
           {filteredEvents.map(event => (
             <EventCard 
-              key={event.id} 
+              key={event._id || event.id} 
               event={event}
               onDelete={onDelete}
               onRegister={onRegister}

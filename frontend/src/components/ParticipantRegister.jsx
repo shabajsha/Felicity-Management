@@ -54,7 +54,7 @@ function ParticipantRegister() {
     
     if (result.success) {
       showSuccess('Registration successful! Welcome to the Event Management System.');
-      navigate('/dashboard', { replace: true });
+      navigate('/onboarding', { replace: true });
     } else {
       setError(result.error || 'Registration failed');
       showError(result.error || 'Registration failed. Please try again.');

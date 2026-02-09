@@ -70,8 +70,8 @@ const RegistrationManagement = () => {
     // Filter by event when showing all registrations
     if (!eventId && selectedEventFilter !== 'all') {
       filtered = filtered.filter(reg => {
-        const regEventId = reg.event?._id || reg.eventId || reg.event;
-        return regEventId == selectedEventFilter;
+        const regEventId = (reg.event?._id || reg.eventId || reg.event)?.toString();
+        return regEventId === selectedEventFilter;
       });
     }
 
@@ -149,7 +149,7 @@ const RegistrationManagement = () => {
         reg.phone || '',
         reg.status,
         new Date(reg.registeredAt || reg.createdAt).toLocaleString(),
-        reg.event?.title || '',
+        reg.event?.title || event?.title || '',
         JSON.stringify(reg.customFieldResponses || {})
       ].join(','))
     ].join('\n');
@@ -158,7 +158,7 @@ const RegistrationManagement = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${event.title.replace(/\s+/g, '_')}_registrations.csv`;
+    a.download = `${(event?.title || 'registrations').replace(/\s+/g, '_')}_registrations.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -237,7 +237,7 @@ const RegistrationManagement = () => {
             <select value={selectedEventFilter} onChange={(e) => setSelectedEventFilter(e.target.value)}>
               <option value="all">All Events</option>
               {organizerEvents.map(evt => (
-                <option key={evt.id} value={evt.id}>{evt.title}</option>
+                <option key={evt._id || evt.id} value={evt._id || evt.id}>{evt.title}</option>
               ))}
             </select>
           </div>
@@ -398,6 +398,13 @@ const RegistrationManagement = () => {
                     {selectedRegistration.status}
                   </span>
                 </div>
+
+                {selectedRegistration.ticketQr && (
+                  <div className="detail-section">
+                    <h3>Ticket QR</h3>
+                    <img src={selectedRegistration.ticketQr} alt="Ticket QR" className="ticket-qr" />
+                  </div>
+                )}
               </div>
 
               {selectedRegistration.isTeam && selectedRegistration.teamMembers && (
@@ -418,7 +425,7 @@ const RegistrationManagement = () => {
                     <h3>Additional Information</h3>
                     {Object.entries(selectedRegistration.customFieldResponses).map(
                       ([fieldId, value]) => {
-                        const field = event.customFields?.find(f => f.id === fieldId);
+                        const field = event?.customFields?.find(f => f.id === fieldId);
                         return (
                           <div key={fieldId} className="detail-row">
                             <span className="label">{field?.label || fieldId}:</span>
@@ -438,7 +445,7 @@ const RegistrationManagement = () => {
                 <>
                   <button
                     onClick={() => {
-                      handleApprove(selectedRegistration.id);
+                      handleApprove(selectedRegistration._id || selectedRegistration.id);
                       setShowDetailsModal(false);
                     }}
                     className="btn-primary"
@@ -447,7 +454,7 @@ const RegistrationManagement = () => {
                   </button>
                   <button
                     onClick={() => {
-                      handleReject(selectedRegistration.id);
+                      handleReject(selectedRegistration._id || selectedRegistration.id);
                       setShowDetailsModal(false);
                     }}
                     className="btn-danger"

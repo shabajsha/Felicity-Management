@@ -8,6 +8,8 @@ import Login from './components/Login.jsx';
 import ParticipantRegister from './components/ParticipantRegister.jsx';
 import ParticipantDashboard from './pages/ParticipantDashboard.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
+import TicketPage from './pages/TicketPage.jsx';
+import OnboardingPage from './pages/OnboardingPage.jsx';
 import ClubsPage from './pages/ClubsPage.jsx';
 import ClubDetailPage from './pages/ClubDetailPage.jsx';
 import OrganizerDashboard from './pages/OrganizerDashboard.jsx';
@@ -131,6 +133,14 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+              <Route
+                path="/onboarding"
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT]}>
+                    <OnboardingPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route 
                 path="/events" 
                 element={
@@ -193,6 +203,14 @@ function App() {
                     <ProfilePage />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="/ticket/:id"
+                element={
+                  <ProtectedRoute allowedRoles={[USER_ROLES.PARTICIPANT, USER_ROLES.ORGANIZER, USER_ROLES.ADMIN]}>
+                    <TicketPage />
+                  </ProtectedRoute>
+                }
               />
               <Route 
                 path="/clubs" 

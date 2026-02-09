@@ -12,6 +12,7 @@ const app = express();
 // Body parser middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/uploads', express.static(process.env.UPLOAD_PATH || 'uploads'));
 
 // Enable CORS
 app.use(cors({

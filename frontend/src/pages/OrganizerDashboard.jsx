@@ -47,8 +47,8 @@ const OrganizerDashboard = () => {
     const upcomingEvents = myEvents.filter(event => new Date(event.date) > now).length;
     const pastEvents = totalEvents - upcomingEvents;
     
-    const eventIds = myEvents.map(e => e._id || e.id);
-    const myRegistrations = registrations.filter(reg => eventIds.includes(reg.event?._id?.toString() || reg.eventId));
+    const eventIds = myEvents.map(e => (e._id || e.id)?.toString());
+    const myRegistrations = registrations.filter(reg => eventIds.includes((reg.event?._id || reg.eventId)?.toString()));
     const totalRegistrations = myRegistrations.length;
     const pendingApprovals = myRegistrations.filter(reg => reg.status === 'pending').length;
     const confirmedRegistrations = myRegistrations.filter(reg => reg.status === 'confirmed').length;
@@ -65,9 +65,9 @@ const OrganizerDashboard = () => {
 
   // Get recent registrations (last 10)
   const recentRegistrations = useMemo(() => {
-    const eventIds = myEvents.map(e => e._id || e.id);
+    const eventIds = myEvents.map(e => (e._id || e.id)?.toString());
     return registrations
-      .filter(reg => eventIds.includes(reg.event?._id?.toString() || reg.eventId))
+      .filter(reg => eventIds.includes((reg.event?._id || reg.eventId)?.toString()))
       .sort((a, b) => new Date(b.createdAt || b.registrationDate || 0) - new Date(a.createdAt || a.registrationDate || 0))
       .slice(0, 10);
   }, [myEvents, registrations]);
@@ -93,11 +93,11 @@ const OrganizerDashboard = () => {
   );
 
   const renderRecentRegistration = (registration) => (
-    <div key={registration.id} className="registration-item">
+    <div key={registration._id || registration.id} className="registration-item">
       <div className="registration-info">
         <h4>{registration.participantName}</h4>
         <p className="registration-event">{registration.event?.title}</p>
-        <span className="registration-date">{formatDate(registration.registeredAt)}</span>
+        <span className="registration-date">{formatDate(registration.registeredAt || registration.createdAt)}</span>
       </div>
       <span className={`status-badge ${registration.status}`}>
         {registration.status}
@@ -113,7 +113,7 @@ const OrganizerDashboard = () => {
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
     
     return (
-      <div key={event.id} className="mini-event-card">
+      <div key={event._id || event.id} className="mini-event-card">
         <div className="event-header">
           <h4>{event.title}</h4>
           <span className={`status-badge ${getEventStatus(event.date)}`}>
@@ -128,10 +128,10 @@ const OrganizerDashboard = () => {
           )}
         </div>
         <div className="event-actions">
-          <Link to={`/organizer/events/${event.id}/manage`} className="btn-secondary-small">
+          <Link to={`/organizer/events/${event._id || event.id}/manage`} className="btn-secondary-small">
             Manage
           </Link>
-          <Link to={`/event/${event.id}`} className="btn-primary-small">
+          <Link to={`/event/${event._id || event.id}`} className="btn-primary-small">
             View
           </Link>
         </div>

@@ -1,13 +1,14 @@
 const Registration = require('../models/Registration');
 const Event = require('../models/Event');
 const User = require('../models/User');
+const { issueTicket } = require('../utils/tickets');
 
 // @desc    Register for an event
 // @route   POST /api/registrations
 // @access  Private (Participant)
 exports.registerForEvent = async (req, res, next) => {
   try {
-    const { eventId, teamName, teamMembers, customFields } = req.body;
+    const { eventId, teamName, teamMembers, customFields, teamLeader } = req.body;
 
     // Check if event exists
     const event = await Event.findById(eventId);
@@ -26,26 +27,42 @@ exports.registerForEvent = async (req, res, next) => {
       });
     }
 
-    // Check if event date has passed
-    if (new Date(event.date) < new Date()) {
+    // Check registration deadline
+    if (event.registrationDeadline && new Date(event.registrationDeadline) < new Date()) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot register for past events'
+        message: 'Registration deadline has passed'
       });
     }
 
-    // Check if user already registered
-    const existingRegistration = await Registration.findOne({
-      event: eventId,
-      user: req.user.id,
-      status: { $ne: 'rejected' }
-    });
-
-    if (existingRegistration) {
-      return res.status(400).json({
+    // Check eligibility
+    if (event.eligibility === 'IIIT' && req.user.participantType !== 'IIIT') {
+      return res.status(403).json({
         success: false,
-        message: 'Already registered for this event'
+        message: 'Only IIIT participants can register for this event'
       });
+    }
+    if (event.eligibility === 'Non-IIIT' && req.user.participantType === 'IIIT') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only external participants can register for this event'
+      });
+    }
+
+    // Check if user already registered (non-merchandise only)
+    if (event.type !== 'Merchandise') {
+      const existingRegistration = await Registration.findOne({
+        event: eventId,
+        user: req.user.id,
+        status: { $ne: 'rejected' }
+      });
+
+      if (existingRegistration) {
+        return res.status(400).json({
+          success: false,
+          message: 'Already registered for this event'
+        });
+      }
     }
 
     // Check capacity
@@ -62,6 +79,13 @@ exports.registerForEvent = async (req, res, next) => {
     }
 
     // Team validation
+    if (event.type === 'Merchandise' && (teamName || teamMembers)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Merchandise purchases are individual only'
+      });
+    }
+
     if (event.allowTeams) {
       if (!teamName || !teamMembers || teamMembers.length < event.minTeamSize - 1) {
         return res.status(400).json({
@@ -83,6 +107,82 @@ exports.registerForEvent = async (req, res, next) => {
       });
     }
 
+    // Merchandise validation and pricing
+    let merchandisePayload = null;
+    let paymentAmount = event.registrationFee || 0;
+    let paymentStatus = (paymentAmount > 0) ? 'pending' : 'free';
+    let registrationStatus = (paymentAmount > 0) ? 'pending' : 'confirmed';
+
+    if (event.type === 'Merchandise') {
+      const payload = req.body.merchandise || {};
+      const quantity = Math.max(1, Number(payload.quantity || req.body.quantity || 1));
+      const purchaseLimit = event.merchandise?.purchaseLimit || 1;
+
+      // Enforce per-participant purchase limit
+      const previous = await Registration.find({ event: eventId, user: req.user.id });
+      const purchased = previous.reduce((sum, reg) => sum + (reg.merchandise?.quantity || 0), 0);
+      if (purchased + quantity > purchaseLimit) {
+        return res.status(400).json({
+          success: false,
+          message: `Purchase limit is ${purchaseLimit} items per participant`
+        });
+      }
+
+      let unitPrice = event.registrationFee || 0;
+      let variantSku = payload.variantSku || null;
+      let size = payload.size || null;
+      let color = payload.color || null;
+
+      if (event.merchandise?.variants?.length) {
+        const variant = event.merchandise.variants.find(v =>
+          (variantSku && v.sku === variantSku) ||
+          (!variantSku && v.size === size && v.color === color)
+        );
+
+        if (!variant) {
+          return res.status(400).json({
+            success: false,
+            message: 'Selected variant not available'
+          });
+        }
+
+        if (variant.stock < quantity) {
+          return res.status(400).json({
+            success: false,
+            message: 'Selected variant is out of stock'
+          });
+        }
+
+        variantSku = variant.sku || variantSku;
+        size = variant.size || size;
+        color = variant.color || color;
+        unitPrice = variant.price || unitPrice;
+
+        variant.stock -= quantity;
+      } else if (event.merchandise) {
+        if ((event.merchandise.stock || 0) < quantity) {
+          return res.status(400).json({
+            success: false,
+            message: 'Item is out of stock'
+          });
+        }
+        event.merchandise.stock -= quantity;
+      }
+
+      paymentAmount = unitPrice * quantity;
+      paymentStatus = paymentAmount > 0 ? 'pending' : 'free';
+      registrationStatus = paymentAmount > 0 ? 'pending' : 'confirmed';
+
+      merchandisePayload = {
+        size,
+        color,
+        variantSku,
+        quantity,
+        unitPrice,
+        totalPrice: paymentAmount
+      };
+    }
+
     // Create registration
     const registration = await Registration.create({
       event: eventId,
@@ -91,18 +191,30 @@ exports.registerForEvent = async (req, res, next) => {
       email: req.user.email,
       isTeam: !!event.allowTeams,
       teamName,
+      teamLeader,
       teamMembers,
       customFieldResponses: customFields,
-      paymentAmount: event.registrationFee || 0,
-      paymentStatus: (event.registrationFee || 0) > 0 ? 'pending' : 'free',
-      status: (event.registrationFee || 0) > 0 ? 'pending' : 'confirmed'
+      merchandise: merchandisePayload,
+      paymentAmount,
+      paymentStatus,
+      amountPaid: paymentStatus === 'paid' ? paymentAmount : 0,
+      status: registrationStatus
     });
+
+    // Update stock and registered count on the event
+    event.registered = (event.registered || 0) + 1;
+    await event.save();
 
     await registration.populate('event', 'title date venue');
 
+    let issued = registration;
+    if (['paid', 'free'].includes(paymentStatus)) {
+      issued = await issueTicket(registration, event);
+    }
+
     res.status(201).json({
       success: true,
-      data: registration
+      data: issued
     });
   } catch (error) {
     next(error);
@@ -251,6 +363,10 @@ exports.cancelRegistration = async (req, res, next) => {
       });
     }
 
+    if (registration.status !== 'rejected') {
+      await Event.findByIdAndUpdate(registration.event, { $inc: { registered: -1 } });
+    }
+
     registration.status = 'rejected';
     await registration.save();
 
@@ -270,7 +386,7 @@ exports.updatePaymentStatus = async (req, res, next) => {
   try {
     const { paymentStatus, paymentMethod, transactionId, amountPaid } = req.body;
 
-    if (!['pending', 'paid', 'failed', 'refunded'].includes(paymentStatus)) {
+    if (!['pending', 'paid', 'failed', 'free', 'refunded'].includes(paymentStatus)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid payment status'
@@ -313,6 +429,10 @@ exports.updatePaymentStatus = async (req, res, next) => {
     }
 
     await registration.save();
+
+    if (paymentStatus === 'paid' && !registration.ticketQr) {
+      await issueTicket(registration, registration.event);
+    }
 
     res.status(200).json({
       success: true,
@@ -477,7 +597,59 @@ exports.updateRegistrationStatus = async (req, res, next) => {
       });
     }
 
+    const previousStatus = registration.status;
     registration.status = status;
+    await registration.save();
+
+    if (previousStatus !== 'rejected' && status === 'rejected') {
+      await Event.findByIdAndUpdate(registration.event, { $inc: { registered: -1 } });
+    }
+    if (previousStatus === 'rejected' && status !== 'rejected') {
+      await Event.findByIdAndUpdate(registration.event, { $inc: { registered: 1 } });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: registration
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Upload payment proof
+// @route   POST /api/registrations/:id/payment-proof
+// @access  Private (Owner)
+exports.uploadPaymentProof = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment proof image is required'
+      });
+    }
+
+    const registration = await Registration.findById(req.params.id);
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found'
+      });
+    }
+
+    if (registration.user.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to upload payment proof'
+      });
+    }
+
+    registration.paymentScreenshot = `/uploads/${req.file.filename}`;
+    if (registration.paymentStatus === 'pending' || registration.paymentStatus === 'failed') {
+      registration.paymentStatus = 'pending';
+    }
+
     await registration.save();
 
     res.status(200).json({

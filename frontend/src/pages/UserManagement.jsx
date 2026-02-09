@@ -32,6 +32,7 @@ const UserManagement = () => {
   const [creating, setCreating] = useState(false);
   const [newOrganizer, setNewOrganizer] = useState(initialOrganizer);
   const [createdCreds, setCreatedCreds] = useState(null);
+  const [resetCreds, setResetCreds] = useState(null);
 
   // Load users from backend
   useEffect(() => {
@@ -111,8 +112,18 @@ const UserManagement = () => {
     }
   };
 
-  const handleResetPassword = (user) => {
-    showSuccess(`Password reset request recorded for ${user.email}`);
+  const handleResetPassword = async (user) => {
+    try {
+      const res = await adminAPI.resetOrganizerPassword(user._id);
+      if (res.success) {
+        setResetCreds(res.credentials);
+        showSuccess(`Password reset for ${user.email}`);
+      } else {
+        showError(res.message || 'Failed to reset password');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to reset password');
+    }
   };
 
   const handleCreateOrganizer = async () => {
@@ -249,6 +260,13 @@ const UserManagement = () => {
               <button className="btn-secondary" onClick={() => handleResetPassword(selectedUser)}>Reset Password</button>
               <button className="btn-secondary" onClick={() => setShowModal(false)}>Close</button>
             </div>
+            {resetCreds && (
+              <div className="credentials-box">
+                <p><strong>New Credentials</strong></p>
+                <p>Email: {resetCreds.email}</p>
+                <p>Password: {resetCreds.password}</p>
+              </div>
+            )}
           </div>
         </div>
       )}

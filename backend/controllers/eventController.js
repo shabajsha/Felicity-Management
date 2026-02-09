@@ -1,5 +1,27 @@
 const Event = require('../models/Event');
+const Registration = require('../models/Registration');
 const User = require('../models/User');
+
+const computeLifecycleStatus = (event) => {
+  if (event.isClosed) return 'closed';
+  if (event.status === 'draft' || event.lifecycleStatus === 'draft') return 'draft';
+  const now = new Date();
+  if (event.endDate && now > new Date(event.endDate)) return 'completed';
+  if (event.date && event.endDate) {
+    const start = new Date(event.date);
+    const end = new Date(event.endDate);
+    if (now >= start && now <= end) return 'ongoing';
+  }
+  return 'published';
+};
+
+const applyLifecycleStatus = (event) => {
+  const computed = computeLifecycleStatus(event);
+  if (event.lifecycleStatus !== computed && computed !== 'draft') {
+    event.lifecycleStatus = computed;
+  }
+  return event;
+};
 
 // @desc    Create a new event
 // @route   POST /api/events
@@ -8,12 +30,45 @@ exports.createEvent = async (req, res, next) => {
   try {
     // Add organizer to req.body
     req.body.organizer = req.user.id;
-    // Auto-approve new events so participants can see them immediately
-    req.body.status = 'approved';
+    const publishNow = Boolean(req.body.publishNow);
+
+    req.body.status = publishNow ? 'pending' : 'draft';
+    req.body.lifecycleStatus = publishNow ? 'published' : 'draft';
     // Ensure organizerName is set from user profile if not provided
     if (!req.body.organizerName && req.user) {
       const name = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
       req.body.organizerName = name || req.user.email;
+    }
+
+    if (req.body.date && req.body.endDate) {
+      const start = new Date(req.body.date);
+      const end = new Date(req.body.endDate);
+      if (end < start) {
+        return res.status(400).json({
+          success: false,
+          message: 'Event end date must be on or after the start date'
+        });
+      }
+    }
+
+    if (req.body.registrationDeadline && req.body.date) {
+      const deadline = new Date(req.body.registrationDeadline);
+      const start = new Date(req.body.date);
+      if (deadline > start) {
+        return res.status(400).json({
+          success: false,
+          message: 'Registration deadline must be before the event start date'
+        });
+      }
+    }
+
+    if (req.body.type === 'Merchandise') {
+      if (!req.body.merchandise || (!req.body.merchandise.stock && !req.body.merchandise.variants)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Merchandise details and stock are required'
+        });
+      }
     }
 
     const event = await Event.create(req.body);
@@ -44,10 +99,15 @@ exports.getEvents = async (req, res, next) => {
 
     // Search functionality
     if (req.query.search) {
+      const raw = req.query.search.trim();
+      const fuzzy = raw.split('').join('.*');
       queryObj.$or = [
-        { title: { $regex: req.query.search, $options: 'i' } },
-        { description: { $regex: req.query.search, $options: 'i' } },
-        { venue: { $regex: req.query.search, $options: 'i' } }
+        { title: { $regex: raw, $options: 'i' } },
+        { title: { $regex: fuzzy, $options: 'i' } },
+        { organizerName: { $regex: raw, $options: 'i' } },
+        { organizerName: { $regex: fuzzy, $options: 'i' } },
+        { description: { $regex: raw, $options: 'i' } },
+        { venue: { $regex: raw, $options: 'i' } }
       ];
     }
 
@@ -66,9 +126,22 @@ exports.getEvents = async (req, res, next) => {
       }
     }
 
+    // Filter by eligibility
+    if (reqQuery.eligibility) {
+      queryObj.eligibility = reqQuery.eligibility;
+    } else if (req.user && req.user.role === 'Participant') {
+      queryObj.eligibility = { $in: ['All', req.user.participantType === 'IIIT' ? 'IIIT' : 'Non-IIIT'] };
+    }
+
     // Filter by organizer
     if (reqQuery.organizer) {
       queryObj.organizer = reqQuery.organizer;
+    }
+
+    // Filter by club(s)
+    if (reqQuery.clubIds) {
+      const clubIds = reqQuery.clubIds.split(',').map(id => id.trim()).filter(Boolean);
+      queryObj.clubId = { $in: clubIds };
     }
 
     // Filter by date range
@@ -117,7 +190,22 @@ exports.getEvents = async (req, res, next) => {
     query = query.skip(startIndex).limit(limit);
 
     // Execute query
-    const events = await query;
+    let events = await query;
+
+    // Trending (top 5 in last 24h)
+    if (reqQuery.trending === 'true') {
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const counts = await Registration.aggregate([
+        { $match: { registrationDate: { $gte: since } } },
+        { $group: { _id: '$event', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 }
+      ]);
+      const ranked = new Map(counts.map(c => [c._id.toString(), c.count]));
+      events = events
+        .filter(e => ranked.has(e._id.toString()))
+        .sort((a, b) => (ranked.get(b._id.toString()) || 0) - (ranked.get(a._id.toString()) || 0));
+    }
 
     // Pagination result
     const pagination = {};
@@ -141,7 +229,10 @@ exports.getEvents = async (req, res, next) => {
       count: events.length,
       total,
       pagination,
-      data: events
+      data: events.map(event => ({
+        ...applyLifecycleStatus(event).toObject(),
+        lifecycleStatus: computeLifecycleStatus(event)
+      }))
     });
   } catch (error) {
     next(error);
@@ -166,7 +257,10 @@ exports.getEvent = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: event
+      data: {
+        ...applyLifecycleStatus(event).toObject(),
+        lifecycleStatus: computeLifecycleStatus(event)
+      }
     });
   } catch (error) {
     next(error);
@@ -198,7 +292,67 @@ exports.updateEvent = async (req, res, next) => {
     // Don't allow changing organizer
     delete req.body.organizer;
 
-    // If event was approved and being modified, set back to pending
+    const effectiveLifecycleStatus = computeLifecycleStatus(event);
+
+    // Prevent custom field edits after first registration
+    if (req.body.customFields) {
+      const registrationCount = await Registration.countDocuments({ event: event._id });
+      if (registrationCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Registration form is locked after first registration'
+        });
+      }
+    }
+
+    // Enforce editing rules based on lifecycle status
+    if (req.user.role !== 'Admin') {
+      if (effectiveLifecycleStatus === 'published') {
+        const allowed = ['description', 'registrationDeadline', 'capacity', 'maxParticipants', 'isClosed'];
+        const invalid = Object.keys(req.body).filter(key => !allowed.includes(key));
+        if (invalid.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Only description, deadline, capacity, or closing is allowed after publish'
+          });
+        }
+      }
+
+      if (effectiveLifecycleStatus === 'ongoing' || effectiveLifecycleStatus === 'completed' || effectiveLifecycleStatus === 'closed') {
+        const allowed = ['lifecycleStatus', 'isClosed'];
+        const invalid = Object.keys(req.body).filter(key => !allowed.includes(key));
+        if (invalid.length > 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'Event cannot be edited after it has started or closed'
+          });
+        }
+      }
+    }
+
+    if (req.body.date || req.body.endDate) {
+      const start = new Date(req.body.date || event.date);
+      const end = new Date(req.body.endDate || event.endDate);
+      if (end < start) {
+        return res.status(400).json({
+          success: false,
+          message: 'Event end date must be on or after the start date'
+        });
+      }
+    }
+
+    if (req.body.registrationDeadline) {
+      const deadline = new Date(req.body.registrationDeadline);
+      const start = new Date(req.body.date || event.date);
+      if (deadline > start) {
+        return res.status(400).json({
+          success: false,
+          message: 'Registration deadline must be before the event start date'
+        });
+      }
+    }
+
+    // If published event was approved and modified, set back to pending
     if (event.status === 'approved' && req.user.role !== 'Admin') {
       req.body.status = 'pending';
     }
@@ -210,7 +364,10 @@ exports.updateEvent = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: event
+      data: {
+        ...applyLifecycleStatus(event).toObject(),
+        lifecycleStatus: computeLifecycleStatus(event)
+      }
     });
   } catch (error) {
     next(error);
@@ -285,11 +442,55 @@ exports.approveEvent = async (req, res, next) => {
       event.rejectionReason = rejectionReason;
     }
 
+    if (status === 'approved' && event.lifecycleStatus === 'draft') {
+      event.lifecycleStatus = 'published';
+    }
+
     await event.save();
 
     res.status(200).json({
       success: true,
-      data: event
+      data: {
+        ...applyLifecycleStatus(event).toObject(),
+        lifecycleStatus: computeLifecycleStatus(event)
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Publish event (move draft to pending approval)
+// @route   PUT /api/events/:id/publish
+// @access  Private (Organizer/Admin)
+exports.publishEvent = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (event.organizer.toString() !== req.user.id && req.user.role !== 'Admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to publish this event'
+      });
+    }
+
+    event.status = 'pending';
+    event.lifecycleStatus = 'published';
+    await event.save();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...applyLifecycleStatus(event).toObject(),
+        lifecycleStatus: computeLifecycleStatus(event)
+      }
     });
   } catch (error) {
     next(error);

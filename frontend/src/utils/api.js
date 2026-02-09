@@ -130,6 +130,11 @@ export const eventsAPI = {
       method: 'PUT',
       body: JSON.stringify({ status, rejectionReason }),
     }),
+
+  publish: (id) =>
+    apiCall(`/events/${id}/publish`, {
+      method: 'PUT'
+    })
 };
 
 // Registrations API
@@ -178,6 +183,25 @@ export const registrationsAPI = {
       method: 'PUT',
       body: JSON.stringify(paymentData),
     }),
+
+  uploadPaymentProof: (id, file) => {
+    const token = getAuthToken();
+    const formData = new FormData();
+    formData.append('proof', file);
+    return fetch(`${API_BASE_URL}/registrations/${id}/payment-proof`, {
+      method: 'POST',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` })
+      },
+      body: formData
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || `API request failed with status ${res.status}`);
+      }
+      return data;
+    });
+  },
 
   checkIn: (id) =>
     apiCall(`/registrations/${id}/checkin`, {
@@ -260,6 +284,11 @@ export const adminAPI = {
       method: 'POST',
       body: JSON.stringify(organizerData),
     }),
+
+  resetOrganizerPassword: (id) =>
+    apiCall(`/admin/users/${id}/reset-password`, {
+      method: 'PUT'
+    })
 };
 
 // Discussions API

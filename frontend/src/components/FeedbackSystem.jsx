@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { useToast } from './Toast.jsx';
-import { feedbackAPI } from '../utils/api';
+import { feedbackAPI, registrationsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers.js';
 import './FeedbackSystem.css';
 
@@ -11,11 +11,12 @@ function FeedbackSystem() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events, registrations } = useData();
+  const { events } = useData();
   const { showSuccess, showError } = useToast();
 
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [registrations, setRegistrations] = useState([]);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [newFeedback, setNewFeedback] = useState({
     rating: 5,
@@ -44,15 +45,38 @@ function FeedbackSystem() {
     fetchFeedback();
   }, [eventId]);
 
-  const event = events.find(e => e.id === parseInt(eventId) || e.id === eventId.toString());
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      try {
+        const response = await registrationsAPI.getUserRegistrations();
+        if (response.success) {
+          setRegistrations(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching registrations:', err);
+      }
+    };
+
+    if (user) {
+      fetchRegistrations();
+    }
+  }, [user]);
+
+  const event = events.find(e => (e._id || e.id) === eventId);
   const userRegistration = registrations.find(
-    r => r.eventId === eventId && r.userId === user?.id
+    r => (r.event?._id || r.eventId || r.event) === eventId
   );
 
   const eventFeedbacks = useMemo(() => {
     // API already filters by eventId, filter out anonymous ones for display
     return feedbacks.filter(f => !f.isAnonymous);
   }, [feedbacks]);
+
+  const getAuthorName = (feedback) => {
+    if (!feedback.user) return 'Anonymous';
+    const name = `${feedback.user.firstName || ''} ${feedback.user.lastName || ''}`.trim();
+    return name || feedback.user.email || 'Anonymous';
+  };
 
   const categories = [
     'Overall Experience',
@@ -83,7 +107,7 @@ function FeedbackSystem() {
 
   const recommendationRate = useMemo(() => {
     if (feedbacks.length === 0) return 0;
-    const recommended = feedbacks.filter(f => f.wouldRecommend).length;
+    const recommended = feedbacks.filter(f => f.rating >= 4).length;
     return ((recommended / feedbacks.length) * 100).toFixed(0);
   }, [feedbacks]);
 
@@ -101,10 +125,11 @@ function FeedbackSystem() {
   }
 
   const hasUserSubmittedFeedback = feedbacks.some(
-    f => f.eventId === eventId && f.userId === user?.id
+    f => f.user?._id === user?.id
   );
 
-  const canSubmitFeedback = userRegistration && userRegistration.status === 'confirmed';
+  const canSubmitFeedback =
+    userRegistration && userRegistration.status === 'confirmed' && userRegistration.checkedIn;
 
   const handleSubmitFeedback = async () => {
     if (!newFeedback.title.trim() || !newFeedback.comment.trim()) {
@@ -118,17 +143,15 @@ function FeedbackSystem() {
     }
 
     try {
-      const response = await feedbackAPI.submitFeedback(eventId, {
+      const response = await feedbackAPI.submit({
+        eventId,
         rating: newFeedback.rating,
-        category: newFeedback.category,
-        title: newFeedback.title,
         comment: newFeedback.comment,
-        wouldRecommend: newFeedback.wouldRecommend,
-        anonymous: newFeedback.anonymous
+        isAnonymous: newFeedback.anonymous
       });
 
       if (response.success) {
-        setFeedbacks(prev => [response.feedback, ...prev]);
+        setFeedbacks(prev => [response.data, ...prev]);
         setNewFeedback({
           rating: 5,
           category: 'Overall Experience',
@@ -148,47 +171,19 @@ function FeedbackSystem() {
     }
   };
 
-  const handleSubmitFeedbackOld = () => {
-    const feedback = {
-      id: Date.now().toString(),
-      eventId,
-      userId: user.id,
-      author: newFeedback.anonymous ? 'Anonymous' : `${user.firstName} ${user.lastName}`,
-      rating: newFeedback.rating,
-      category: newFeedback.category,
-      title: newFeedback.title,
-      comment: newFeedback.comment,
-      wouldRecommend: newFeedback.wouldRecommend,
-      anonymous: newFeedback.anonymous,
-      createdAt: new Date().toISOString(),
-      helpful: 0
-    };
-
-    saveFeedbacks([...feedbacks, feedback]);
-    setNewFeedback({
-      rating: 5,
-      category: 'Overall Experience',
-      title: '',
-      comment: '',
-      wouldRecommend: true,
-      anonymous: false
-    });
-    setShowFeedbackForm(false);
-    showSuccess('Thank you for your feedback!');
-  };
-
-  const handleMarkHelpful = (feedbackId) => {
-    const updatedFeedbacks = feedbacks.map(f => {
-      if (f.id === feedbackId) {
-        return { ...f, helpful: (f.helpful || 0) + 1 };
+  const handleMarkHelpful = async (feedbackId) => {
+    try {
+      const response = await feedbackAPI.markHelpful(feedbackId);
+      if (response.success) {
+        setFeedbacks(prev => prev.map(f => (f._id === feedbackId ? response.data : f)));
+        showSuccess('Marked as helpful');
+      } else {
+        showError(response.message || 'Failed to mark helpful');
       }
-      return f;
-    });
-    saveFeedbacks(updatedFeedbacks);
-    showSuccess('Marked as helpful');
+    } catch (err) {
+      showError('Failed to mark helpful');
+    }
   };
-
-  const isOrganizer = event.organizerId === user?.id || user?.role === 'Admin';
 
   return (
     <div className="feedback-container">
@@ -270,14 +265,14 @@ function FeedbackSystem() {
         ) : (
           <div className="feedbacks-list">
             {eventFeedbacks.map(feedback => (
-              <div key={feedback.id} className="feedback-card">
+              <div key={feedback._id || feedback.id} className="feedback-card">
                 <div className="feedback-header-row">
                   <div className="feedback-author">
                     <div className="author-avatar">
-                      {feedback.author.charAt(0)}
+                      {getAuthorName(feedback).charAt(0)}
                     </div>
                     <div className="author-info">
-                      <div className="author-name">{feedback.author}</div>
+                      <div className="author-name">{getAuthorName(feedback)}</div>
                       <div className="feedback-date">{formatDate(feedback.createdAt)}</div>
                     </div>
                   </div>
@@ -291,19 +286,15 @@ function FeedbackSystem() {
                 </div>
 
                 <div className="feedback-category">
-                  <span className="category-tag">{feedback.category}</span>
-                  {feedback.wouldRecommend && (
-                    <span className="recommend-badge">👍 Recommends</span>
-                  )}
+                  <span className="category-tag">Overall Experience</span>
                 </div>
 
-                <h3 className="feedback-title">{feedback.title}</h3>
                 <p className="feedback-comment">{feedback.comment}</p>
 
                 <div className="feedback-footer">
                   <button 
                     className="btn-helpful"
-                    onClick={() => handleMarkHelpful(feedback.id)}
+                    onClick={() => handleMarkHelpful(feedback._id || feedback.id)}
                   >
                     👍 Helpful ({feedback.helpful || 0})
                   </button>

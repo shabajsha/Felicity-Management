@@ -1,24 +1,47 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useData } from '../context/DataContext.jsx';
 import { useToast } from './Toast.jsx';
+import { eventsAPI, registrationsAPI } from '../utils/api';
 import './QRScanner.css';
 
 function QRScanner() {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events, registrations, updateRegistration } = useData();
   const { showSuccess, showError, showInfo } = useToast();
   
   const [manualTicketId, setManualTicketId] = useState('');
+  const [event, setEvent] = useState(null);
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [scanHistory, setScanHistory] = useState([]);
   const [stats, setStats] = useState({ total: 0, checkedIn: 0, pending: 0 });
   const [searchTerm, setSearchTerm] = useState('');
 
-  const event = events.find(e => e.id === parseInt(eventId) || e.id === eventId.toString());
-  const eventRegistrations = registrations.filter(r => r.eventId === eventId);
+  const eventRegistrations = registrations;
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const eventRes = await eventsAPI.getEventById(eventId);
+        if (eventRes.success) {
+          setEvent(eventRes.data);
+        }
+        const regRes = await registrationsAPI.getEventRegistrations(eventId);
+        if (regRes.success) {
+          setRegistrations(regRes.data || []);
+        }
+      } catch (err) {
+        showError('Failed to load event check-ins');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [eventId, showError]);
 
   useEffect(() => {
     if (eventRegistrations.length > 0) {
@@ -28,6 +51,16 @@ function QRScanner() {
       setStats({ total, checkedIn, pending });
     }
   }, [eventRegistrations]);
+
+  if (loading) {
+    return (
+      <div className="qr-scanner-container">
+        <div className="not-found">
+          <h2>Loading...</h2>
+        </div>
+      </div>
+    );
+  }
 
   if (!event) {
     return (
@@ -43,7 +76,8 @@ function QRScanner() {
   }
 
   // Check if user is organizer of this event
-  const isOrganizer = event.organizerId === user?.id || user?.role === 'Admin';
+  const organizerId = event.organizer?._id || event.organizer || event.organizerId;
+  const isOrganizer = organizerId?.toString() === user?.id || user?.role === 'Admin';
   if (!isOrganizer) {
     return (
       <div className="qr-scanner-container">
@@ -58,7 +92,7 @@ function QRScanner() {
     );
   }
 
-  const handleManualCheckIn = () => {
+  const handleManualCheckIn = async () => {
     const ticketId = manualTicketId.trim().toUpperCase();
     if (!ticketId) {
       showError('Please enter a ticket ID');
@@ -81,11 +115,17 @@ function QRScanner() {
       return;
     }
 
-    // Check in the participant
-    updateRegistration(registration.id, {
-      checkedIn: true,
-      checkInTime: new Date().toISOString()
-    });
+    try {
+      const response = await registrationsAPI.checkIn(registration._id || registration.id);
+      if (response.success) {
+        setRegistrations(prev =>
+          prev.map(reg => ((reg._id || reg.id) === (registration._id || registration.id) ? response.data : reg))
+        );
+      }
+    } catch (err) {
+      showError('Failed to check in participant');
+      return;
+    }
 
     setScanHistory(prev => [{
       ticketId: registration.ticketId,
@@ -114,7 +154,7 @@ function QRScanner() {
     );
   });
 
-  const handleBulkCheckIn = (registration) => {
+  const handleBulkCheckIn = async (registration) => {
     if (registration.checkedIn) {
       showInfo('Participant already checked in');
       return;
@@ -125,10 +165,17 @@ function QRScanner() {
       return;
     }
 
-    updateRegistration(registration.id, {
-      checkedIn: true,
-      checkInTime: new Date().toISOString()
-    });
+    try {
+      const response = await registrationsAPI.checkIn(registration._id || registration.id);
+      if (response.success) {
+        setRegistrations(prev =>
+          prev.map(reg => ((reg._id || reg.id) === (registration._id || registration.id) ? response.data : reg))
+        );
+      }
+    } catch (err) {
+      showError('Failed to check in participant');
+      return;
+    }
 
     setScanHistory(prev => [{
       ticketId: registration.ticketId,
@@ -267,7 +314,7 @@ function QRScanner() {
               </div>
             ) : (
               filteredRegistrations.map(reg => (
-                <div key={reg.id} className={`registration-item ${reg.checkedIn ? 'checked-in' : ''}`}>
+                <div key={reg._id || reg.id} className={`registration-item ${reg.checkedIn ? 'checked-in' : ''}`}>
                   <div className="reg-info">
                     <div className="reg-icon">
                       {reg.checkedIn ? '✓' : '👤'}
@@ -287,7 +334,7 @@ function QRScanner() {
                     </div>
                   </div>
                   <div className="reg-actions">
-                    {reg.status !== 'approved' ? (
+                    {reg.status !== 'confirmed' ? (
                       <span className="status-badge pending">{reg.status}</span>
                     ) : reg.checkedIn ? (
                       <span className="status-badge success">Checked In</span>

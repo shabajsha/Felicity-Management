@@ -1,15 +1,14 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useData } from '../context/DataContext';
-import { adminAPI } from '../utils/api';
+import { adminAPI, eventsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-  const { events, registrations, users } = useData();
   const [timeRange, setTimeRange] = useState('week'); // week, month, all
   const [systemStats, setSystemStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [events, setEvents] = useState([]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -18,6 +17,10 @@ const AdminDashboard = () => {
         const response = await adminAPI.getStats();
         if (response.success) {
           setSystemStats(response.data);
+        }
+        const eventsResponse = await eventsAPI.getAll();
+        if (eventsResponse.success) {
+          setEvents(eventsResponse.data || []);
         }
       } catch (err) {
         console.error('Error fetching system stats:', err);
@@ -35,12 +38,6 @@ const AdminDashboard = () => {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const roleCount = (role) => {
-      const fromApi = systemStats?.users?.byRole?.find(r => r._id === role)?.count;
-      if (typeof fromApi === 'number') return fromApi;
-      return users.filter(u => u.role === role).length;
-    };
-
     const filterByDate = (items, dateField) => {
       return {
         week: items.filter(item => new Date(item[dateField]) >= weekAgo).length,
@@ -49,22 +46,25 @@ const AdminDashboard = () => {
       };
     };
 
-    const totalUsers = systemStats?.users?.total ?? users.length;
-    const participants = roleCount('Participant');
-    const organizersCount = roleCount('Organizer');
+    const totalUsers = systemStats?.users?.total ?? 0;
+    const participants = systemStats?.users?.byRole?.find(r => r._id === 'Participant')?.count ?? 0;
+    const organizersCount = systemStats?.users?.byRole?.find(r => r._id === 'Organizer')?.count ?? 0;
 
     const totalEvents = systemStats?.events?.total ?? events.length;
     const upcomingEvents = systemStats?.events?.upcoming ?? events.filter(e => new Date(e.date) > now).length;
     const pastEvents = Math.max(0, totalEvents - upcomingEvents);
 
     const newEvents = filterByDate(events.filter(e => e.createdAt), 'createdAt');
-    const newRegistrations = filterByDate(registrations.filter(r => r.registeredAt), 'registeredAt');
+    const newRegistrations = {
+      week: systemStats?.registrations?.byStatus ? 0 : 0,
+      month: systemStats?.registrations?.byStatus ? 0 : 0,
+      all: systemStats?.registrations?.total ?? 0
+    };
 
-    const pendingApprovals = systemStats?.registrations?.byStatus?.find(s => s._id === 'pending')?.count
-      ?? registrations.filter(r => r.status === 'pending').length;
+    const pendingApprovals = systemStats?.registrations?.byStatus?.find(s => s._id === 'pending')?.count ?? 0;
 
     const totalRevenue = (systemStats?.payments ?? []).reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-    const totalRegistrations = systemStats?.registrations?.total ?? registrations.length;
+    const totalRegistrations = systemStats?.registrations?.total ?? 0;
 
     return {
       totalUsers,
@@ -79,7 +79,7 @@ const AdminDashboard = () => {
       totalRevenue,
       totalRegistrations
     };
-  }, [events, registrations, users, systemStats]);
+  }, [events, systemStats]);
 
   // Recent activities
   const recentActivities = useMemo(() => {
@@ -112,40 +112,8 @@ const AdminDashboard = () => {
         .slice(0, 10);
     }
 
-    const activities = [];
-
-    events
-      .filter(e => e.createdAt)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 5)
-      .forEach(event => {
-        activities.push({
-          type: 'event',
-          message: `New event created: ${event.title}`,
-          date: event.createdAt,
-          organizer: event.organizer
-        });
-      });
-
-    registrations
-      .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt))
-      .slice(0, 5)
-      .forEach(reg => {
-        const event = events.find(e => e.id === reg.eventId);
-        if (event) {
-          activities.push({
-            type: 'registration',
-            message: `${reg.participantName} registered for ${event.title}`,
-            date: reg.registeredAt,
-            status: reg.status
-          });
-        }
-      });
-
-    return activities
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 10);
-  }, [events, registrations, systemStats]);
+    return [];
+  }, [systemStats]);
 
   // Popular events
   const popularEvents = useMemo(() => {

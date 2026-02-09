@@ -1,3 +1,18 @@
+.payment-proof {
+  margin-top: 8px;
+}
+
+.upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.upload-label input {
+  margin-left: 8px;
+}
 .participant-dashboard {
   max-width: 1200px;
   margin: 0 auto;

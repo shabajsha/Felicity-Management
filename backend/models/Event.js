@@ -16,6 +16,10 @@ const eventSchema = new mongoose.Schema({
     type: Date,
     required: [true, 'Event date is required']
   },
+  endDate: {
+    type: Date,
+    required: [true, 'Event end date is required']
+  },
   time: {
     type: String,
     required: [true, 'Event time is required']
@@ -66,7 +70,13 @@ const eventSchema = new mongoose.Schema({
     default: 0
   },
   registrationDeadline: {
-    type: Date
+    type: Date,
+    required: [true, 'Registration deadline is required']
+  },
+  eligibility: {
+    type: String,
+    enum: ['All', 'IIIT', 'Non-IIIT'],
+    default: 'All'
   },
   participantType: {
     type: String,
@@ -98,6 +108,29 @@ const eventSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
+  merchandise: {
+    itemName: {
+      type: String,
+      trim: true
+    },
+    description: {
+      type: String,
+      trim: true
+    },
+    sizes: [{ type: String, trim: true }],
+    colors: [{ type: String, trim: true }],
+    variants: [
+      {
+        sku: { type: String, trim: true },
+        size: { type: String, trim: true },
+        color: { type: String, trim: true },
+        price: { type: Number, min: 0, default: 0 },
+        stock: { type: Number, min: 0, default: 0 }
+      }
+    ],
+    stock: { type: Number, min: 0, default: 0 },
+    purchaseLimit: { type: Number, min: 1, default: 1 }
+  },
   paymentAmount: {
     type: Number,
     default: 0
@@ -120,7 +153,16 @@ const eventSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected', 'draft'],
-    default: 'pending'
+    default: 'draft'
+  },
+  lifecycleStatus: {
+    type: String,
+    enum: ['draft', 'published', 'ongoing', 'closed', 'completed'],
+    default: 'draft'
+  },
+  isClosed: {
+    type: Boolean,
+    default: false
   },
   isActive: {
     type: Boolean,

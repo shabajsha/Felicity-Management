@@ -1,67 +1,88 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
+import { clubsAPI } from '../utils/api';
 import './ClubManagement.css';
 
 const ClubManagement = () => {
-  const { organizers, events, updateOrganizer, deleteOrganizer } = useData();
+  const { events } = useData();
   const { showSuccess, showError } = useToast();
+
+  const [clubs, setClubs] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all'); // all, active, inactive
   const [selectedClub, setSelectedClub] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const filteredOrganizers = useMemo(() => {
-    let filtered = organizers;
+  useEffect(() => {
+    const fetchClubs = async () => {
+      try {
+        setLoading(true);
+        const response = await clubsAPI.getAll();
+        if (response.success) {
+          setClubs(response.data || []);
+        } else {
+          showError(response.message || 'Failed to load clubs');
+        }
+      } catch (err) {
+        showError('Failed to load clubs');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClubs();
+  }, [showError]);
+
+  const filteredClubs = useMemo(() => {
+    let filtered = clubs;
 
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(org =>
-        org.name.toLowerCase().includes(search) ||
-        org.description.toLowerCase().includes(search) ||
-        org.contactEmail.toLowerCase().includes(search)
+        org.name?.toLowerCase().includes(search) ||
+        org.description?.toLowerCase().includes(search) ||
+        org.contact?.email?.toLowerCase().includes(search)
       );
     }
 
     // Sort by total events
-    return filtered.sort((a, b) => (b.totalEvents || 0) - (a.totalEvents || 0));
-  }, [organizers, searchTerm]);
+    return filtered.sort((a, b) => getClubEvents(b._id).length - getClubEvents(a._id).length);
+  }, [clubs, searchTerm]);
 
   const stats = useMemo(() => {
-    const total = organizers.length;
-    const totalEvents = organizers.reduce((sum, org) => sum + (org.totalEvents || 0), 0);
-    const totalFollowers = organizers.reduce((sum, org) => sum + (org.followers || 0), 0);
+    const total = clubs.length;
+    const totalEvents = events.filter(e => e.clubId).length;
+    const totalFollowers = clubs.reduce((sum, club) => sum + (club.members?.length || 0), 0);
     
     return { total, totalEvents, totalFollowers };
-  }, [organizers]);
+  }, [clubs, events]);
 
   const handleViewDetails = (club) => {
     setSelectedClub(club);
     setShowDetailsModal(true);
   };
 
-  const handleToggleStatus = (clubId) => {
-    const club = organizers.find(o => o.id === clubId);
-    const newStatus = !club.isActive;
-    updateOrganizer(clubId, { isActive: newStatus });
-    showSuccess(`Club ${newStatus ? 'activated' : 'deactivated'} successfully`);
-  };
-
   const handleDeleteClub = (clubId) => {
     if (window.confirm('Are you sure you want to delete this club? This action cannot be undone.')) {
-      const clubEvents = events.filter(e => e.organizerId === clubId);
+      const clubEvents = events.filter(e => (e.clubId || e.clubId?._id) === clubId);
       if (clubEvents.length > 0) {
         showError(`Cannot delete club with ${clubEvents.length} associated events. Please remove events first.`);
         return;
       }
-      deleteOrganizer(clubId);
-      showSuccess('Club deleted successfully');
+      clubsAPI.delete(clubId)
+        .then(() => {
+          setClubs(prev => prev.filter(c => c._id !== clubId));
+          showSuccess('Club deleted successfully');
+        })
+        .catch(() => showError('Failed to delete club'));
     }
   };
 
   const getClubEvents = (clubId) => {
-    return events.filter(e => e.organizerId === clubId);
+    return events.filter(e => (e.clubId || e.clubId?._id) === clubId);
   };
 
   return (
@@ -100,7 +121,11 @@ const ClubManagement = () => {
 
       {/* Clubs Table */}
       <div className="clubs-table-container">
-        {filteredOrganizers.length > 0 ? (
+        {loading ? (
+          <div className="empty-state">
+            <p>Loading clubs...</p>
+          </div>
+        ) : filteredClubs.length > 0 ? (
           <table className="clubs-table">
             <thead>
               <tr>
@@ -114,12 +139,12 @@ const ClubManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredOrganizers.map(club => {
-                const clubEvents = getClubEvents(club.id);
+              {filteredClubs.map(club => {
+                const clubEvents = getClubEvents(club._id);
                 const upcomingEvents = clubEvents.filter(e => new Date(e.date) > new Date()).length;
                 
                 return (
-                  <tr key={club.id}>
+                  <tr key={club._id}>
                     <td>
                       <div className="club-info">
                         <strong>{club.name}</strong>
@@ -130,12 +155,12 @@ const ClubManagement = () => {
                     </td>
                     <td>
                       <div className="contact-info">
-                        <div>{club.contactEmail}</div>
-                        <div className="phone">{club.contactNumber}</div>
+                        <div>{club.contact?.email || '-'}</div>
+                        <div className="phone">{club.contact?.phone || '-'}</div>
                       </div>
                     </td>
                     <td className="number">{clubEvents.length}</td>
-                    <td className="number">{club.followers || 0}</td>
+                    <td className="number">{club.members?.length || 0}</td>
                     <td className="number">{upcomingEvents}</td>
                     <td>
                       <div className="action-buttons">
@@ -147,7 +172,7 @@ const ClubManagement = () => {
                           👁️
                         </button>
                         <button
-                          onClick={() => handleDeleteClub(club.id)}
+                          onClick={() => handleDeleteClub(club._id)}
                           className="btn-delete"
                           title="Delete"
                         >
@@ -203,11 +228,11 @@ const ClubManagement = () => {
                 </div>
                 <div className="detail-row">
                   <span className="label">Email:</span>
-                  <span className="value">{selectedClub.contactEmail}</span>
+                  <span className="value">{selectedClub.contact?.email || '-'}</span>
                 </div>
                 <div className="detail-row">
                   <span className="label">Phone:</span>
-                  <span className="value">{selectedClub.contactNumber}</span>
+                  <span className="value">{selectedClub.contact?.phone || '-'}</span>
                 </div>
               </div>
 
@@ -215,15 +240,17 @@ const ClubManagement = () => {
                 <h3>Statistics</h3>
                 <div className="stats-row">
                   <div className="stat-item">
-                    <span className="stat-number">{selectedClub.totalEvents || 0}</span>
+                    <span className="stat-number">{getClubEvents(selectedClub._id).length}</span>
                     <span className="stat-label">Total Events</span>
                   </div>
                   <div className="stat-item">
-                    <span className="stat-number">{selectedClub.upcomingEvents || 0}</span>
+                    <span className="stat-number">
+                      {getClubEvents(selectedClub._id).filter(e => new Date(e.date) > new Date()).length}
+                    </span>
                     <span className="stat-label">Upcoming Events</span>
                   </div>
                   <div className="stat-item">
-                    <span className="stat-number">{selectedClub.followers || 0}</span>
+                    <span className="stat-number">{selectedClub.members?.length || 0}</span>
                     <span className="stat-label">Followers</span>
                   </div>
                 </div>
@@ -232,13 +259,13 @@ const ClubManagement = () => {
               <div className="detail-section">
                 <h3>Recent Events</h3>
                 <div className="events-list">
-                  {getClubEvents(selectedClub.id).slice(0, 5).map(event => (
-                    <div key={event.id} className="event-item">
+                  {getClubEvents(selectedClub._id).slice(0, 5).map(event => (
+                    <div key={event._id || event.id} className="event-item">
                       <strong>{event.title}</strong>
                       <span>{new Date(event.date).toLocaleDateString()}</span>
                     </div>
                   ))}
-                  {getClubEvents(selectedClub.id).length === 0 && (
+                  {getClubEvents(selectedClub._id).length === 0 && (
                     <p className="empty-message">No events yet</p>
                   )}
                 </div>

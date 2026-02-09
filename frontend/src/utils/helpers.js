@@ -56,6 +56,9 @@ export const formatEventDate = (dateString) => {
  * Format time to 12-hour format
  */
 export const formatTime = (timeString) => {
+  if (!timeString || typeof timeString !== 'string') {
+    return 'TBD';
+  }
   const [hours, minutes] = timeString.split(':');
   const hour = parseInt(hours);
   const ampm = hour >= 12 ? 'PM' : 'AM';
@@ -103,6 +106,15 @@ export const isRegistrationClosed = (deadline) => {
  * Get event availability status
  */
 export const getEventAvailability = (event) => {
+  if (event.type === 'Merchandise') {
+    const variants = event.merchandise?.variants || [];
+    const stock = variants.length > 0
+      ? variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+      : (event.merchandise?.stock || 0);
+    if (stock <= 0) return { text: 'Sold Out', class: 'almost-full', available: 0 };
+    return { text: 'Available', class: 'available', available: stock };
+  }
+
   const capacity = event.capacity || event.maxParticipants || 0;
   const registered = event.registered || 0;
   const available = capacity - registered;
@@ -190,7 +202,11 @@ export const filterEvents = (events, filters) => {
   }
   
   if (filters.followedOnly && filters.followedClubs?.length > 0) {
-    filtered = filtered.filter(e => filters.followedClubs.includes(e.organizerId));
+    filtered = filtered.filter(e => {
+      const clubId = e.clubId?._id || e.clubId;
+      const organizerId = e.organizer?._id || e.organizer || e.organizerId;
+      return filters.followedClubs.includes(clubId) || filters.followedClubs.includes(organizerId);
+    });
   }
   
   return filtered;

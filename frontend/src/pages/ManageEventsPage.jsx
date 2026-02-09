@@ -109,19 +109,20 @@ const ManageEventsPage = () => {
 
   const getEventRegistrations = (eventId) => {
     return registrations.filter(reg => {
-      const regEventId = reg.event?._id || reg.event || reg.eventId;
-      return regEventId === eventId;
+      const regEventId = (reg.event?._id || reg.event || reg.eventId)?.toString();
+      return regEventId === eventId.toString();
     });
   };
 
   const renderEventCard = (event) => {
-    const eventRegs = getEventRegistrations(event.id);
+    const eventId = event._id || event.id;
+    const eventRegs = getEventRegistrations(eventId);
     const status = getEventStatus(event.date);
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
     const confirmedCount = eventRegs.filter(r => r.status === 'confirmed').length;
 
     return (
-      <div key={event.id} className="manage-event-card">
+      <div key={eventId} className="manage-event-card">
         <div className="event-card-header">
           <div>
             <h3>{event.title}</h3>
@@ -154,18 +155,18 @@ const ManageEventsPage = () => {
         </div>
 
         <div className="event-card-actions">
-          <Link to={`/event/${event.id}`} className="btn-outline">
+          <Link to={`/event/${eventId}`} className="btn-outline">
             View
           </Link>
-          <Link to={`/organizer/events/${event.id}/manage`} className="btn-primary-small">
+          <Link to={`/organizer/events/${eventId}/manage`} className="btn-primary-small">
             Manage Registrations
           </Link>
           {status === EVENT_STATUS.UPCOMING && (
             <>
-              <Link to={`/organizer/checkin/${event.id}`} className="btn-success-small">
+              <Link to={`/organizer/checkin/${eventId}`} className="btn-success-small">
                 📱 Check-In
               </Link>
-              <Link to={`/organizer/events/edit/${event.id}`} className="btn-outline">
+              <Link to={`/organizer/events/edit/${eventId}`} className="btn-outline">
                 Edit
               </Link>
             </>

@@ -1,21 +1,51 @@
 import { useParams, Link } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { clubsAPI } from '../utils/api';
 import { formatDateShort } from '../utils/helpers';
 import './ClubDetailPage.css';
 
 function ClubDetailPage() {
   const { id } = useParams();
-  const { organizers, events } = useData();
-  const { user, login } = useAuth();
-  const { showSuccess } = useToast();
+  const { events } = useData();
+  const { user, updateProfile } = useAuth();
+  const { showSuccess, showError } = useToast();
 
-  const organizer = organizers.find(org => org.id === parseInt(id) || org.id === id);
-  const followedClubs = user?.followedClubs || [];
-  const isFollowing = followedClubs.includes(organizer?.id);
+  const [club, setClub] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  if (!organizer) {
+  const followedClubs = (user?.preferences?.followedClubs || []).map(clubItem => clubItem._id || clubItem);
+  const isFollowing = followedClubs.includes(club?._id);
+
+  useEffect(() => {
+    const fetchClub = async () => {
+      try {
+        setLoading(true);
+        const response = await clubsAPI.getById(id);
+        if (response.success) {
+          setClub(response.data || null);
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClub();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="club-detail-page">
+        <div className="not-found">
+          <h2>Loading...</h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (!club && !loading) {
     return (
       <div className="club-detail-page">
         <div className="not-found">
@@ -27,21 +57,26 @@ function ClubDetailPage() {
     );
   }
 
-  const organizerEvents = events.filter(e => e.organizerId === organizer.id);
+  const organizerEvents = useMemo(
+    () => events.filter(e => (e.clubId || e.clubId?._id) === club?._id),
+    [events, club]
+  );
   const upcomingEvents = organizerEvents.filter(e => new Date(e.date) >= new Date());
   const pastEvents = organizerEvents.filter(e => new Date(e.date) < new Date());
 
-  const handleFollowToggle = () => {
+  const handleFollowToggle = async () => {
     if (!user) return;
 
     const updatedClubs = isFollowing
-      ? followedClubs.filter(id => id !== organizer.id)
-      : [...followedClubs, organizer.id];
+      ? followedClubs.filter(clubId => clubId !== club._id)
+      : [...followedClubs, club._id];
 
-    const updatedUser = { ...user, followedClubs: updatedClubs };
-    login(updatedUser);
-
-    showSuccess(isFollowing ? 'Unfollowed club' : 'Following club');
+    const result = await updateProfile({ followedClubs: updatedClubs });
+    if (result.success) {
+      showSuccess(isFollowing ? 'Unfollowed club' : 'Following club');
+    } else {
+      showError(result.error || 'Failed to update followed clubs');
+    }
   };
 
   return (
@@ -49,24 +84,24 @@ function ClubDetailPage() {
       <div className="club-detail-header">
         <div className="club-header-content">
           <div className="club-avatar-large">
-            {organizer.name.charAt(0).toUpperCase()}
+            {club.name.charAt(0).toUpperCase()}
           </div>
           <div className="club-info">
-            <div className="club-category-badge">{organizer.category}</div>
-            <h1>{organizer.name}</h1>
-            <p className="club-description">{organizer.description}</p>
+            <div className="club-category-badge">{club.category}</div>
+            <h1>{club.name}</h1>
+            <p className="club-description">{club.description}</p>
             <div className="club-meta">
               <div className="meta-item">
                 <span className="meta-icon">👥</span>
-                <span>{organizer.followers} followers</span>
+                <span>{club.members?.length || 0} followers</span>
               </div>
               <div className="meta-item">
                 <span className="meta-icon">📅</span>
-                <span>{organizer.totalEvents} total events</span>
+                <span>{organizerEvents.length} total events</span>
               </div>
               <div className="meta-item">
                 <span className="meta-icon">📧</span>
-                <span>{organizer.contactEmail}</span>
+                <span>{club.contact?.email || '-'}</span>
               </div>
             </div>
           </div>
@@ -91,7 +126,7 @@ function ClubDetailPage() {
           ) : (
             <div className="events-list">
               {upcomingEvents.map(event => (
-                <Link key={event.id} to={`/event/${event.id}`} className="event-item">
+                <Link key={event._id || event.id} to={`/event/${event._id || event.id}`} className="event-item">
                   <div className="event-date">
                     <div className="date-day">{new Date(event.date).getDate()}</div>
                     <div className="date-month">
@@ -103,7 +138,7 @@ function ClubDetailPage() {
                     <div className="event-meta-row">
                       <span>⏰ {event.time}</span>
                       <span>📍 {event.location}</span>
-                      <span>👥 {event.registered}/{event.capacity}</span>
+                      <span>👥 {event.registered || 0}/{event.capacity || event.maxParticipants || 0}</span>
                     </div>
                   </div>
                   <div className="event-arrow">→</div>
@@ -122,7 +157,7 @@ function ClubDetailPage() {
           ) : (
             <div className="events-list">
               {pastEvents.slice(0, 10).map(event => (
-                <Link key={event.id} to={`/event/${event.id}`} className="event-item past">
+                <Link key={event._id || event.id} to={`/event/${event._id || event.id}`} className="event-item past">
                   <div className="event-date">
                     <div className="date-day">{new Date(event.date).getDate()}</div>
                     <div className="date-month">
@@ -133,7 +168,7 @@ function ClubDetailPage() {
                     <h3>{event.title}</h3>
                     <div className="event-meta-row">
                       <span>📅 {formatDateShort(event.date)}</span>
-                      <span>👥 {event.registered} attended</span>
+                      <span>👥 {event.registered || 0} attended</span>
                     </div>
                   </div>
                   <div className="event-arrow">→</div>

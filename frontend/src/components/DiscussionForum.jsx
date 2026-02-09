@@ -41,14 +41,20 @@ function DiscussionForum() {
     fetchDiscussions();
   }, [eventId]);
 
-  const event = events.find(e => e.id === parseInt(eventId) || e.id === eventId.toString());
+  const event = events.find(e => (e._id || e.id) === eventId);
 
-  const categories = ['General', 'Questions', 'Feedback', 'Technical', 'Announcements'];
+  const categories = ['General', 'Questions', 'Technical', 'Suggestions', 'Issues'];
 
   const eventDiscussions = useMemo(() => {
     // API already filters by eventId, so just return all discussions
     return discussions;
   }, [discussions]);
+
+  const getAuthorName = (author) => {
+    if (!author) return 'Unknown';
+    const name = `${author.firstName || ''} ${author.lastName || ''}`.trim();
+    return name || author.email || 'Unknown';
+  };
 
   const filteredDiscussions = useMemo(() => {
     let filtered = eventDiscussions;
@@ -100,7 +106,7 @@ function DiscussionForum() {
       });
 
       if (response.success) {
-        setDiscussions(prev => [response.thread, ...prev]);
+        setDiscussions(prev => [response.data, ...prev]);
         setNewThread({ title: '', content: '', category: 'General' });
         setShowNewThread(false);
         showSuccess('Thread created successfully');
@@ -113,31 +119,6 @@ function DiscussionForum() {
     }
   };
 
-  const handleCreateThreadOld = () => {
-    const thread = {
-      id: Date.now().toString(),
-      eventId,
-      title: newThread.title,
-      content: newThread.content,
-      category: newThread.category,
-      author: {
-        id: user.id,
-        name: `${user.firstName} ${user.lastName}`,
-        role: user.role
-      },
-      createdAt: new Date().toISOString(),
-      replies: [],
-      views: 0,
-      isPinned: false,
-      isClosed: false
-    };
-
-    saveDiscussions([...discussions, thread]);
-    setNewThread({ title: '', content: '', category: 'General' });
-    setShowNewThread(false);
-    showSuccess('Discussion thread created successfully!');
-  };
-
   const handleAddReply = async () => {
     if (!replyContent.trim()) {
       showError('Please enter a reply');
@@ -145,19 +126,17 @@ function DiscussionForum() {
     }
 
     try {
-      const response = await discussionsAPI.addReply(selectedThread._id || selectedThread.id, {
-        content: replyContent
-      });
+      const response = await discussionsAPI.reply(selectedThread._id || selectedThread.id, replyContent);
 
       if (response.success) {
         setDiscussions(prev =>
           prev.map(d =>
             (d._id === selectedThread._id || d.id === selectedThread.id)
-              ? response.thread
+              ? response.data
               : d
           )
         );
-        setSelectedThread(response.thread);
+        setSelectedThread(response.data);
         setReplyContent('');
         showSuccess('Reply added successfully');
       } else {
@@ -169,69 +148,45 @@ function DiscussionForum() {
     }
   };
 
-  const handleAddReplyOld = () => {
-    if (!replyContent.trim()) {
-      showError('Please enter a reply');
-      return;
-    }
-
-    const reply = {
-      id: Date.now().toString(),
-      content: replyContent,
-      author: {
-        id: user.id,
-        name: `${user.firstName} ${user.lastName}`,
-        role: user.role
-      },
-      createdAt: new Date().toISOString()
-    };
-
-    const updatedDiscussions = discussions.map(d => {
-      if (d.id === selectedThread.id) {
-        return { ...d, replies: [...(d.replies || []), reply] };
-      }
-      return d;
-    });
-
-    saveDiscussions(updatedDiscussions);
-    setReplyContent('');
-    setSelectedThread({ ...selectedThread, replies: [...(selectedThread.replies || []), reply] });
-    showSuccess('Reply added successfully!');
-  };
-
-  const handleDeleteThread = (threadId) => {
+  const handleDeleteThread = async (threadId) => {
     if (!window.confirm('Are you sure you want to delete this thread?')) return;
-    
-    const updatedDiscussions = discussions.filter(d => d.id !== threadId);
-    saveDiscussions(updatedDiscussions);
-    setSelectedThread(null);
-    showSuccess('Thread deleted successfully');
+    try {
+      const response = await discussionsAPI.delete(threadId);
+      if (response.success) {
+        setDiscussions(prev => prev.filter(d => (d._id || d.id) !== threadId));
+        setSelectedThread(null);
+        showSuccess('Thread deleted successfully');
+      } else {
+        showError(response.message || 'Failed to delete thread');
+      }
+    } catch (err) {
+      showError('Failed to delete thread');
+    }
   };
 
-  const handlePinThread = (threadId) => {
-    const updatedDiscussions = discussions.map(d => {
-      if (d.id === threadId) {
-        return { ...d, isPinned: !d.isPinned };
+  const handlePinThread = async (threadId) => {
+    try {
+      const response = await discussionsAPI.togglePin(threadId);
+      if (response.success) {
+        setDiscussions(prev => prev.map(d => ((d._id || d.id) === threadId ? response.data : d)));
+        if (selectedThread && (selectedThread._id || selectedThread.id) === threadId) {
+          setSelectedThread(response.data);
+        }
+        showSuccess('Thread updated');
+      } else {
+        showError(response.message || 'Failed to update thread');
       }
-      return d;
-    });
-    saveDiscussions(updatedDiscussions);
-    showSuccess('Thread updated');
+    } catch (err) {
+      showError('Failed to update thread');
+    }
   };
 
   const openThread = (thread) => {
-    // Increment views
-    const updatedDiscussions = discussions.map(d => {
-      if (d.id === thread.id) {
-        return { ...d, views: (d.views || 0) + 1 };
-      }
-      return d;
-    });
-    saveDiscussions(updatedDiscussions);
-    setSelectedThread({ ...thread, views: (thread.views || 0) + 1 });
+    setSelectedThread(thread);
   };
 
-  const isOrganizer = event.organizerId === user?.id || user?.role === 'Admin';
+  const organizerId = event.organizer?._id || event.organizer || event.organizerId;
+  const isOrganizer = organizerId?.toString() === user?.id || user?.role === 'Admin';
 
   return (
     <div className="forum-container">
@@ -303,7 +258,7 @@ function DiscussionForum() {
         ) : (
           filteredDiscussions.map(thread => (
             <div 
-              key={thread.id} 
+              key={thread._id || thread.id} 
               className={`thread-card ${thread.isPinned ? 'pinned' : ''}`}
               onClick={() => openThread(thread)}
             >
@@ -317,13 +272,15 @@ function DiscussionForum() {
               <p className="thread-preview">{thread.content}</p>
               <div className="thread-meta">
                 <div className="author-info">
-                  <span className="author-name">{thread.author.name}</span>
-                  <span className="author-role">({thread.author.role})</span>
+                  <span className="author-name">{getAuthorName(thread.author)}</span>
+                  {thread.author?.role && (
+                    <span className="author-role">({thread.author.role})</span>
+                  )}
                   <span>•</span>
                   <span>{formatDate(thread.createdAt)}</span>
                 </div>
                 <div className="thread-stats">
-                  <span>👁️ {thread.views || 0}</span>
+                  <span>👁️ {thread.views || thread.viewCount || 0}</span>
                   <span>💬 {thread.replies?.length || 0} replies</span>
                 </div>
               </div>
@@ -401,10 +358,12 @@ function DiscussionForum() {
               {/* Original Post */}
               <div className="post original-post">
                 <div className="post-author">
-                  <div className="author-avatar">{selectedThread.author.name.charAt(0)}</div>
+                  <div className="author-avatar">{getAuthorName(selectedThread.author).charAt(0)}</div>
                   <div className="author-details">
-                    <div className="author-name">{selectedThread.author.name}</div>
-                    <div className="author-role">{selectedThread.author.role}</div>
+                    <div className="author-name">{getAuthorName(selectedThread.author)}</div>
+                    {selectedThread.author?.role && (
+                      <div className="author-role">{selectedThread.author.role}</div>
+                    )}
                     <div className="post-time">{formatDate(selectedThread.createdAt)}</div>
                   </div>
                 </div>
@@ -413,13 +372,13 @@ function DiscussionForum() {
                   <div className="post-actions">
                     <button 
                       className="btn-action"
-                      onClick={() => handlePinThread(selectedThread.id)}
+                      onClick={() => handlePinThread(selectedThread._id || selectedThread.id)}
                     >
                       {selectedThread.isPinned ? '📌 Unpin' : '📌 Pin'}
                     </button>
                     <button 
                       className="btn-action danger"
-                      onClick={() => handleDeleteThread(selectedThread.id)}
+                      onClick={() => handleDeleteThread(selectedThread._id || selectedThread.id)}
                     >
                       🗑️ Delete
                     </button>
@@ -432,12 +391,14 @@ function DiscussionForum() {
                 <div className="replies-section">
                   <h3>{selectedThread.replies.length} Replies</h3>
                   {selectedThread.replies.map(reply => (
-                    <div key={reply.id} className="post reply-post">
+                    <div key={reply._id || reply.id} className="post reply-post">
                       <div className="post-author">
-                        <div className="author-avatar">{reply.author.name.charAt(0)}</div>
+                        <div className="author-avatar">{getAuthorName(reply.author).charAt(0)}</div>
                         <div className="author-details">
-                          <div className="author-name">{reply.author.name}</div>
-                          <div className="author-role">{reply.author.role}</div>
+                          <div className="author-name">{getAuthorName(reply.author)}</div>
+                          {reply.author?.role && (
+                            <div className="author-role">{reply.author.role}</div>
+                          )}
                           <div className="post-time">{formatDate(reply.createdAt)}</div>
                         </div>
                       </div>

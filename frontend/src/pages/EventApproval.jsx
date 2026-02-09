@@ -1,12 +1,13 @@
-import { useState, useMemo } from 'react';
-import { useData } from '../context/DataContext';
+import { useState, useMemo, useEffect } from 'react';
 import { useToast } from '../components/Toast';
-import { formatDate, formatEventDate } from '../utils/helpers';
+import { eventsAPI } from '../utils/api';
+import { formatDate, formatEventDate, getOrganizerName } from '../utils/helpers';
 import './EventApproval.css';
 
 const EventApproval = () => {
-  const { events, organizers, updateEvent } = useData();
   const { showSuccess, showError } = useToast();
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
   
   const [statusFilter, setStatusFilter] = useState('pending');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -17,10 +18,30 @@ const EventApproval = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [eventToReject, setEventToReject] = useState(null);
 
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await eventsAPI.getAll();
+        if (res.success) {
+          setEvents(res.data || []);
+        } else {
+          showError(res.message || 'Failed to load events');
+        }
+      } catch (err) {
+        showError('Failed to load events');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [showError]);
+
   // Calculate statistics
   const stats = useMemo(() => {
-    const pending = events.filter(e => e.status === 'pending' || e.status === 'draft').length;
-    const approved = events.filter(e => e.status === 'published').length;
+    const pending = events.filter(e => e.status === 'pending').length;
+    const approved = events.filter(e => e.status === 'approved').length;
     const rejected = events.filter(e => e.status === 'rejected').length;
     const total = events.length;
     
@@ -47,24 +68,24 @@ const EventApproval = () => {
     });
   }, [events, statusFilter, categoryFilter, searchTerm]);
 
-  const getOrganizerName = (organizerId) => {
-    const organizer = organizers.find(org => org.id === organizerId);
-    return organizer ? organizer.name : 'Unknown Organizer';
-  };
-
   const handleViewDetails = (event) => {
     setSelectedEvent(event);
     setShowModal(true);
   };
 
-  const handleApprove = (event) => {
-    updateEvent(event.id, { 
-      status: 'published',
-      approvedAt: new Date().toISOString(),
-      approvedBy: 'admin' // In real app, use actual admin ID
-    });
-    showSuccess('Event approved successfully');
-    setShowModal(false);
+  const handleApprove = async (event) => {
+    try {
+      const res = await eventsAPI.approve(event._id || event.id, 'approved');
+      if (res.success) {
+        setEvents(prev => prev.map(e => (e._id === event._id ? res.data : e)));
+        showSuccess('Event approved successfully');
+        setShowModal(false);
+      } else {
+        showError(res.message || 'Failed to approve event');
+      }
+    } catch (err) {
+      showError('Failed to approve event');
+    }
   };
 
   const handleRejectClick = (event) => {
@@ -79,31 +100,26 @@ const EventApproval = () => {
       return;
     }
 
-    updateEvent(eventToReject.id, { 
-      status: 'rejected',
-      rejectedAt: new Date().toISOString(),
-      rejectedBy: 'admin',
-      rejectionReason: rejectionReason
-    });
-    
-    showSuccess('Event rejected');
-    setShowRejectModal(false);
-    setShowModal(false);
-    setEventToReject(null);
-    setRejectionReason('');
+    eventsAPI.approve(eventToReject._id || eventToReject.id, 'rejected', rejectionReason)
+      .then((res) => {
+        if (res.success) {
+          setEvents(prev => prev.map(e => (e._id === eventToReject._id ? res.data : e)));
+          showSuccess('Event rejected');
+        } else {
+          showError(res.message || 'Failed to reject event');
+        }
+      })
+      .catch(() => showError('Failed to reject event'))
+      .finally(() => {
+        setShowRejectModal(false);
+        setShowModal(false);
+        setEventToReject(null);
+        setRejectionReason('');
+      });
   };
 
   const handleRequestChanges = (event) => {
-    const changes = prompt('Describe the changes needed:');
-    if (changes && changes.trim()) {
-      updateEvent(event.id, { 
-        status: 'changes_requested',
-        changesRequested: changes,
-        requestedAt: new Date().toISOString()
-      });
-      showSuccess('Change request sent to organizer');
-      setShowModal(false);
-    }
+    showError('Change request workflow is not implemented in the backend');
   };
 
   return (
@@ -149,9 +165,8 @@ const EventApproval = () => {
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">All Status</option>
               <option value="pending">Pending Review</option>
-              <option value="published">Approved</option>
+              <option value="approved">Approved</option>
               <option value="rejected">Rejected</option>
-              <option value="changes_requested">Changes Requested</option>
             </select>
           </div>
           
@@ -171,24 +186,28 @@ const EventApproval = () => {
 
       {/* Events Grid */}
       <div className="events-grid">
-        {filteredEvents.length === 0 ? (
+        {loading ? (
+          <div className="empty-state">
+            <p>Loading events...</p>
+          </div>
+        ) : filteredEvents.length === 0 ? (
           <div className="empty-state">
             <p>No events found</p>
           </div>
         ) : (
           filteredEvents.map(event => (
-            <div key={event.id} className="event-card">
+            <div key={event._id || event.id} className="event-card">
               <div className="event-header">
                 <h3>{event.title}</h3>
                 <span className={`status-badge status-${event.status}`}>
-                  {event.status === 'draft' ? 'pending' : event.status}
+                  {event.status}
                 </span>
               </div>
               
               <div className="event-info">
                 <div className="info-item">
                   <span className="icon">🏢</span>
-                  <span>{getOrganizerName(event.organizerId)}</span>
+                  <span>{getOrganizerName(event.organizer, event.organizerName)}</span>
                 </div>
                 <div className="info-item">
                   <span className="icon">📅</span>
@@ -217,7 +236,7 @@ const EventApproval = () => {
                 >
                   View Details
                 </button>
-                {(event.status === 'pending' || event.status === 'draft') && (
+                {event.status === 'pending' && (
                   <>
                     <button
                       className="btn-approve"
@@ -254,7 +273,7 @@ const EventApproval = () => {
                 <h3>Event Information</h3>
                 <div className="detail-row">
                   <span className="label">Organizer:</span>
-                  <span className="value">{getOrganizerName(selectedEvent.organizerId)}</span>
+                  <span className="value">{getOrganizerName(selectedEvent.organizer, selectedEvent.organizerName)}</span>
                 </div>
                 <div className="detail-row">
                   <span className="label">Date:</span>
@@ -284,7 +303,7 @@ const EventApproval = () => {
                   <span className="label">Status:</span>
                   <span className="value">
                     <span className={`status-badge status-${selectedEvent.status}`}>
-                      {selectedEvent.status === 'draft' ? 'pending' : selectedEvent.status}
+                      {selectedEvent.status}
                     </span>
                   </span>
                 </div>
@@ -355,7 +374,7 @@ const EventApproval = () => {
             </div>
 
             <div className="modal-actions">
-              {(selectedEvent.status === 'pending' || selectedEvent.status === 'draft') && (
+              {selectedEvent.status === 'pending' && (
                 <>
                   <button
                     className="btn-changes"

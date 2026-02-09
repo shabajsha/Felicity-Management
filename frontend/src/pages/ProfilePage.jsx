@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { PARTICIPANT_TYPES, AREAS_OF_INTEREST } from '../utils/constants';
-import { useData } from '../context/DataContext';
-import { isValidEmail } from '../utils/helpers';
+import { clubsAPI } from '../utils/api';
 import './ProfilePage.css';
 
 function ProfilePage() {
-  const { user, login } = useAuth();
-  const { organizers } = useData();
+  const { user, updateProfile, updatePassword } = useAuth();
   const { showSuccess, showError } = useToast();
+  const [clubs, setClubs] = useState([]);
+  const [loadingClubs, setLoadingClubs] = useState(true);
 
   const [formData, setFormData] = useState({
     firstName: '',
@@ -39,11 +39,27 @@ function ProfilePage() {
         participantType: user.participantType || '',
         college: user.college || '',
         contactNumber: user.contactNumber || '',
-        interests: user.interests || [],
-        followedClubs: user.followedClubs || [],
+        interests: user.preferences?.interests || [],
+        followedClubs: (user.preferences?.followedClubs || []).map(clubItem => clubItem._id || clubItem),
       });
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchClubs = async () => {
+      try {
+        setLoadingClubs(true);
+        const response = await clubsAPI.getAll();
+        if (response.success) {
+          setClubs(response.data || []);
+        }
+      } finally {
+        setLoadingClubs(false);
+      }
+    };
+
+    fetchClubs();
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -68,7 +84,7 @@ function ProfilePage() {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.firstName.trim()) {
       showError('First name is required');
       return;
@@ -86,15 +102,24 @@ function ProfilePage() {
       return;
     }
 
-    // Update user in auth context
-    const updatedUser = { ...user, ...formData };
-    login(updatedUser);
-    
-    setIsEditing(false);
-    showSuccess('Profile updated successfully!');
+    const result = await updateProfile({
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      contactNumber: formData.contactNumber,
+      college: formData.college,
+      interests: formData.interests,
+      followedClubs: formData.followedClubs,
+    });
+
+    if (result.success) {
+      setIsEditing(false);
+      showSuccess('Profile updated successfully!');
+    } else {
+      showError(result.error || 'Failed to update profile');
+    }
   };
 
-  const handlePasswordChange = () => {
+  const handlePasswordChange = async () => {
     if (!passwordData.currentPassword || !passwordData.newPassword || !passwordData.confirmPassword) {
       showError('All password fields are required');
       return;
@@ -108,10 +133,18 @@ function ProfilePage() {
       return;
     }
 
-    // Mock password change - in real app, would call backend
-    showSuccess('Password changed successfully!');
-    setShowPasswordModal(false);
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    const result = await updatePassword({
+      currentPassword: passwordData.currentPassword,
+      newPassword: passwordData.newPassword,
+    });
+
+    if (result.success) {
+      showSuccess('Password changed successfully!');
+      setShowPasswordModal(false);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    } else {
+      showError(result.error || 'Failed to update password');
+    }
   };
 
   if (!user) return null;
@@ -139,8 +172,8 @@ function ProfilePage() {
                 participantType: user.participantType || '',
                 college: user.college || '',
                 contactNumber: user.contactNumber || '',
-                interests: user.interests || [],
-                followedClubs: user.followedClubs || [],
+                interests: user.preferences?.interests || [],
+                followedClubs: (user.preferences?.followedClubs || []).map(clubItem => clubItem._id || clubItem),
               });
             }}>
               Cancel
@@ -250,19 +283,22 @@ function ProfilePage() {
           <h2>Followed Clubs & Organizers</h2>
           <p className="section-description">Follow clubs to get notified about their events and see them in your feed</p>
           <div className="clubs-grid">
-            {organizers.map(org => (
-              <label key={org.id} className={`club-card ${formData.followedClubs.includes(org.id) ? 'following' : ''}`}>
+            {loadingClubs && (
+              <div className="empty-message">Loading clubs...</div>
+            )}
+            {!loadingClubs && clubs.map(club => (
+              <label key={club._id} className={`club-card ${formData.followedClubs.includes(club._id) ? 'following' : ''}`}>
                 <input
                   type="checkbox"
-                  checked={formData.followedClubs.includes(org.id)}
-                  onChange={() => toggleClub(org.id)}
+                  checked={formData.followedClubs.includes(club._id)}
+                  onChange={() => toggleClub(club._id)}
                   disabled={!isEditing}
                 />
                 <div className="club-info">
-                  <h3>{org.name}</h3>
-                  <span className="club-category">{org.category}</span>
-                  <p className="club-description">{org.description}</p>
-                  {formData.followedClubs.includes(org.id) && (
+                  <h3>{club.name}</h3>
+                  <span className="club-category">{club.category}</span>
+                  <p className="club-description">{club.description}</p>
+                  {formData.followedClubs.includes(club._id) && (
                     <span className="following-badge">✓ Following</span>
                   )}
                 </div>

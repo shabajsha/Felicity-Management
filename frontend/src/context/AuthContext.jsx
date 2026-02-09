@@ -37,10 +37,16 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     try {
       const response = await authAPI.login(credentials);
-      const userData = {
+      let userData = {
         ...response.user,
         token: response.token
       };
+      try {
+        const me = await authAPI.getMe();
+        userData = { ...userData, ...me.data };
+      } catch (err) {
+        // Ignore profile fetch errors; user can still proceed with basic data.
+      }
       setUser(userData);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
       return { success: true, user: userData };
@@ -84,12 +90,22 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const updatePassword = async (passwordData) => {
+    try {
+      await authAPI.updatePassword(passwordData);
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  };
+
   const value = useMemo(() => ({ 
     user, 
     login, 
     register, 
     logout, 
     updateProfile,
+    updatePassword,
     loading 
   }), [user, loading]);
 

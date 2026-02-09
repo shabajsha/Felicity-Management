@@ -5,14 +5,18 @@ import { useData } from '../context/DataContext';
 import { registrationsAPI } from '../utils/api';
 import { formatDateShort, formatTime, getDaysUntilEvent, getOrganizerName } from '../utils/helpers';
 import { REGISTRATION_STATUS, EVENT_TYPES } from '../utils/constants';
+import { useToast } from '../components/Toast.jsx';
 import './ParticipantDashboard.css';
 
 function ParticipantDashboard() {
   const { user } = useAuth();
   const { events } = useData();
+  const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState('upcoming');
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [uploadingId, setUploadingId] = useState(null);
 
   useEffect(() => {
     const fetchRegistrations = async () => {
@@ -20,9 +24,11 @@ function ParticipantDashboard() {
         const response = await registrationsAPI.getUserRegistrations();
         if (response.success) {
           setRegistrations(response.data || []);
+          setError(null);
         }
       } catch (err) {
         console.error('Error fetching registrations:', err);
+        setError('Failed to load registrations');
       } finally {
         setLoading(false);
       }
@@ -38,10 +44,15 @@ function ParticipantDashboard() {
   }, [registrations]);
 
   const upcomingEvents = useMemo(() => {
+    const allowedStatuses = [
+      REGISTRATION_STATUS.CONFIRMED,
+      REGISTRATION_STATUS.PENDING,
+      REGISTRATION_STATUS.APPROVED,
+    ];
     return userRegistrations
       .filter(reg => {
         const event = events.find(e => (e._id || e.id) === (reg.eventId || reg.event?._id || reg.event?.id));
-        return event && new Date(event.date) >= new Date() && reg.status === REGISTRATION_STATUS.CONFIRMED;
+        return event && new Date(event.date) >= new Date() && allowedStatuses.includes((reg.status || '').toLowerCase());
       })
       .map(reg => ({
         ...reg,
@@ -62,9 +73,10 @@ function ParticipantDashboard() {
 
       const registration = { ...reg, event };
 
-      if (reg.status === REGISTRATION_STATUS.CANCELLED || reg.status === REGISTRATION_STATUS.REJECTED) {
+      const status = (reg.status || '').toLowerCase();
+      if (status === REGISTRATION_STATUS.CANCELLED || status === REGISTRATION_STATUS.REJECTED) {
         cancelled.push(registration);
-      } else if (new Date(event.date) < new Date() || reg.status === REGISTRATION_STATUS.COMPLETED) {
+      } else if (new Date(event.date) < new Date() || status === REGISTRATION_STATUS.COMPLETED) {
         completed.push(registration);
       } else if (event.type === EVENT_TYPES.MERCHANDISE) {
         merchandise.push(registration);
@@ -80,6 +92,21 @@ function ParticipantDashboard() {
     total: upcomingEvents.length,
     thisWeek: upcomingEvents.filter(e => getDaysUntilEvent(e.event.date) <= 7).length,
     thisMonth: upcomingEvents.filter(e => getDaysUntilEvent(e.event.date) <= 30).length,
+  };
+
+  const handleUploadProof = async (registrationId, file) => {
+    try {
+      setUploadingId(registrationId);
+      const res = await registrationsAPI.uploadPaymentProof(registrationId, file);
+      if (res.success) {
+        setRegistrations(prev => prev.map(r => (r._id === registrationId || r.id === registrationId ? res.data : r)));
+        showSuccess('Payment proof uploaded');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to upload payment proof');
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   const renderEventCard = (registration) => {
@@ -123,13 +150,36 @@ function ParticipantDashboard() {
                 {daysUntil === 0 ? '🔥 Today!' : `📅 ${daysUntil} days`}
               </span>
             )}
+            {registration.isTeam && registration.teamName && (
+              <span className="team-name">👥 {registration.teamName}</span>
+            )}
           </div>
           <div className="event-ticket-info">
-            <span className="ticket-id">Ticket: {registration.ticketId}</span>
+            <Link to={`/ticket/${registration._id || registration.id}`} className="ticket-id">
+              Ticket: {registration.ticketId}
+            </Link>
             <Link to={`/event/${event._id || event.id}`} className="view-details-link">
               View Details →
             </Link>
           </div>
+          {event.type === EVENT_TYPES.MERCHANDISE && registration.paymentStatus === 'pending' && (
+            <div className="payment-proof">
+              <label className="upload-label">
+                Upload payment proof
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleUploadProof(registration._id || registration.id, file);
+                    }
+                  }}
+                  disabled={uploadingId === (registration._id || registration.id)}
+                />
+              </label>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -141,6 +191,14 @@ function ParticipantDashboard() {
         <h1>My Dashboard</h1>
         <p className="subtitle">Welcome back, {user?.firstName}! Track your events and registrations</p>
       </div>
+
+      {loading && (
+        <div className="loading">Loading your registrations...</div>
+      )}
+
+      {error && !loading && (
+        <div className="error-banner">{error}</div>
+      )}
 
       <div className="stats-grid">
         <div className="stat-card">
