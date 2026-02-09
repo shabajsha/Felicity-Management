@@ -1,28 +1,52 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
+import { registrationsAPI } from '../utils/api';
 import { formatDate, getEventStatus } from '../utils/helpers';
 import { EVENT_STATUS } from '../utils/constants';
 import './ManageEventsPage.css';
 
 const ManageEventsPage = () => {
   const { user } = useAuth();
-  const { events, organizers, registrations, deleteEvent } = useData();
+  const { events, deleteEvent } = useData();
   const { showSuccess } = useToast();
 
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [eventToDelete, setEventToDelete] = useState(null);
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await registrationsAPI.getOrganizerRegistrations();
+        if (res.success) {
+          setRegistrations(res.data || res.registrations || []);
+        }
+      } catch (err) {
+        console.error('Error fetching registrations', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, []);
 
   // Get organizer's events
   const myEvents = useMemo(() => {
-    const organizer = organizers.find(org => org.id === user.organizerId);
-    if (!organizer) return [];
-    return events.filter(event => event.organizerId === organizer.id);
-  }, [events, organizers, user.organizerId]);
+    const organizerId = user?._id || user?.id;
+    if (!organizerId) return [];
+    return events.filter(event => {
+      const orgId = event.organizer?._id || event.organizer || event.organizerId;
+      return orgId === organizerId;
+    });
+  }, [events, user]);
 
   // Filter and search events
   const filteredEvents = useMemo(() => {
@@ -84,14 +108,17 @@ const ManageEventsPage = () => {
   };
 
   const getEventRegistrations = (eventId) => {
-    return registrations.filter(reg => reg.eventId === eventId);
+    return registrations.filter(reg => {
+      const regEventId = reg.event?._id || reg.event || reg.eventId;
+      return regEventId === eventId;
+    });
   };
 
   const renderEventCard = (event) => {
     const eventRegs = getEventRegistrations(event.id);
     const status = getEventStatus(event.date);
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
-    const approvedCount = eventRegs.filter(r => r.status === 'approved').length;
+    const confirmedCount = eventRegs.filter(r => r.status === 'confirmed').length;
 
     return (
       <div key={event.id} className="manage-event-card">
@@ -115,8 +142,8 @@ const ManageEventsPage = () => {
             <span className="stat-value">{eventRegs.length} / {event.maxParticipants}</span>
           </div>
           <div className="stat">
-            <span className="stat-label">Approved</span>
-            <span className="stat-value approved">{approvedCount}</span>
+            <span className="stat-label">Confirmed</span>
+            <span className="stat-value confirmed">{confirmedCount}</span>
           </div>
           {pendingCount > 0 && (
             <div className="stat">
@@ -204,7 +231,9 @@ const ManageEventsPage = () => {
 
       {/* Events List */}
       <div className="events-container">
-        {filteredEvents.length > 0 ? (
+        {loading ? (
+          <div className="empty-state"><p>Loading events...</p></div>
+        ) : filteredEvents.length > 0 ? (
           filteredEvents.map(renderEventCard)
         ) : (
           <div className="empty-state">

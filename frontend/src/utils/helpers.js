@@ -1,5 +1,18 @@
 import { VALIDATION } from './constants';
 
+export const getOrganizerName = (organizer, organizerName) => {
+  if (organizerName && typeof organizerName === 'string') return organizerName;
+  if (!organizer) return 'Organizer';
+  if (typeof organizer === 'string') return organizer;
+
+  const name = `${organizer.firstName || ''} ${organizer.lastName || ''}`.trim();
+  if (name) return name;
+  if (organizer.name) return organizer.name;
+  if (organizer.email) return organizer.email;
+  if (organizer._id) return organizer._id;
+  return 'Organizer';
+};
+
 /**
  * Format date to readable string
  */
@@ -138,13 +151,14 @@ export const generateTicketId = () => {
  */
 export const searchEvents = (events, query) => {
   if (!query) return events;
-  
+
+  const normalizeOrganizer = (event) => getOrganizerName(event.organizer, event.organizerName);
   const lowerQuery = query.toLowerCase();
   return events.filter(event => 
     event.title.toLowerCase().includes(lowerQuery) ||
     event.location.toLowerCase().includes(lowerQuery) ||
     event.description.toLowerCase().includes(lowerQuery) ||
-    event.organizer.toLowerCase().includes(lowerQuery) ||
+    normalizeOrganizer(event).toLowerCase().includes(lowerQuery) ||
     event.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
   );
 };
@@ -306,12 +320,12 @@ export const getEventStatus = (eventDate) => {
  */
 export const calculateEventStats = (registrations) => {
   const total = registrations.length;
-  const confirmed = registrations.filter(r => r.status === 'Confirmed').length;
-  const cancelled = registrations.filter(r => r.status === 'Cancelled').length;
-  const pending = registrations.filter(r => r.status === 'Pending').length;
+  const confirmed = registrations.filter(r => r.status === 'confirmed').length;
+  const cancelled = registrations.filter(r => r.status === 'cancelled').length;
+  const pending = registrations.filter(r => r.status === 'pending').length;
   
   const totalRevenue = registrations
-    .filter(r => r.paymentStatus === 'Paid')
+    .filter(r => r.paymentStatus === 'paid')
     .reduce((sum, r) => sum + (r.amount || 0), 0);
   
   return {

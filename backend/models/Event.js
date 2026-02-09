@@ -126,13 +126,13 @@ const eventSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
-  createdAt: {
-    type: Date,
-    default: Date.now
+  averageRating: {
+    type: Number,
+    default: 0
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now
+  totalFeedbacks: {
+    type: Number,
+    default: 0
   }
 }, {
   timestamps: true,

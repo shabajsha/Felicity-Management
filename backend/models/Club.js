@@ -20,6 +20,10 @@ const clubSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  headCoordinator: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  },
   contact: {
     email: {
       type: String,
@@ -42,14 +46,6 @@ const clubSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
   timestamps: true

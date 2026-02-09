@@ -1,29 +1,51 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { formatDateShort, formatTime, getDaysUntilEvent } from '../utils/helpers';
+import { registrationsAPI } from '../utils/api';
+import { formatDateShort, formatTime, getDaysUntilEvent, getOrganizerName } from '../utils/helpers';
 import { REGISTRATION_STATUS, EVENT_TYPES } from '../utils/constants';
 import './ParticipantDashboard.css';
 
 function ParticipantDashboard() {
   const { user } = useAuth();
-  const { events, registrations } = useData();
+  const { events } = useData();
   const [activeTab, setActiveTab] = useState('upcoming');
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      try {
+        const response = await registrationsAPI.getUserRegistrations();
+        if (response.success) {
+          setRegistrations(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching registrations:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (user) {
+      fetchRegistrations();
+    }
+  }, [user]);
 
   const userRegistrations = useMemo(() => {
-    return registrations.filter(reg => reg.userId === user?.id);
-  }, [registrations, user]);
+    return registrations;
+  }, [registrations]);
 
   const upcomingEvents = useMemo(() => {
     return userRegistrations
       .filter(reg => {
-        const event = events.find(e => e.id === reg.eventId);
+        const event = events.find(e => (e._id || e.id) === (reg.eventId || reg.event?._id || reg.event?.id));
         return event && new Date(event.date) >= new Date() && reg.status === REGISTRATION_STATUS.CONFIRMED;
       })
       .map(reg => ({
         ...reg,
-        event: events.find(e => e.id === reg.eventId)
+        event: events.find(e => (e._id || e.id) === (reg.eventId || reg.event?._id || reg.event?.id)) || reg.event
       }))
       .sort((a, b) => new Date(a.event.date) - new Date(b.event.date));
   }, [userRegistrations, events]);
@@ -35,7 +57,7 @@ function ParticipantDashboard() {
     const cancelled = [];
 
     userRegistrations.forEach(reg => {
-      const event = events.find(e => e.id === reg.eventId);
+      const event = events.find(e => (e._id || e.id) === (reg.eventId || reg.event?._id || reg.event?.id)) || reg.event;
       if (!event) return;
 
       const registration = { ...reg, event };
@@ -62,10 +84,12 @@ function ParticipantDashboard() {
 
   const renderEventCard = (registration) => {
     const { event } = registration;
+    if (!event) return null;
+    
     const daysUntil = getDaysUntilEvent(event.date);
 
     return (
-      <div key={registration.id} className="dashboard-event-card">
+      <div key={registration._id || registration.id} className="dashboard-event-card">
         <div className="event-card-left">
           <div className="event-date-badge">
             <div className="date-day">{new Date(event.date).getDate()}</div>
@@ -77,10 +101,10 @@ function ParticipantDashboard() {
         <div className="event-card-content">
           <div className="event-card-header">
             <div>
-              <Link to={`/event/${event.id}`} className="event-title-link">
+              <Link to={`/event/${event._id || event.id}`} className="event-title-link">
                 <h3>{event.title}</h3>
               </Link>
-              <p className="event-organizer">{event.organizer}</p>
+              <p className="event-organizer">{getOrganizerName(event.organizer, event.organizerName)}</p>
             </div>
             <div className="event-badges">
               {event.type === EVENT_TYPES.MERCHANDISE && (
@@ -102,7 +126,7 @@ function ParticipantDashboard() {
           </div>
           <div className="event-ticket-info">
             <span className="ticket-id">Ticket: {registration.ticketId}</span>
-            <Link to={`/event/${event.id}`} className="view-details-link">
+            <Link to={`/event/${event._id || event.id}`} className="view-details-link">
               View Details →
             </Link>
           </div>

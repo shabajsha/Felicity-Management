@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { useToast } from './Toast.jsx';
+import { discussionsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers.js';
 import './DiscussionForum.css';
 
@@ -13,11 +14,8 @@ function DiscussionForum() {
   const { events } = useData();
   const { showSuccess, showError } = useToast();
 
-  const [discussions, setDiscussions] = useState(() => {
-    const stored = localStorage.getItem('ems_discussions');
-    return stored ? JSON.parse(stored) : [];
-  });
-
+  const [discussions, setDiscussions] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [newThread, setNewThread] = useState({ title: '', content: '', category: 'General' });
   const [showNewThread, setShowNewThread] = useState(false);
   const [selectedThread, setSelectedThread] = useState(null);
@@ -25,13 +23,32 @@ function DiscussionForum() {
   const [filterCategory, setFilterCategory] = useState('All');
   const [sortBy, setSortBy] = useState('recent');
 
+  useEffect(() => {
+    const fetchDiscussions = async () => {
+      try {
+        setLoading(true);
+        const response = await discussionsAPI.getEventDiscussions(eventId);
+        if (response.success) {
+          setDiscussions(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching discussions:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDiscussions();
+  }, [eventId]);
+
   const event = events.find(e => e.id === parseInt(eventId) || e.id === eventId.toString());
 
   const categories = ['General', 'Questions', 'Feedback', 'Technical', 'Announcements'];
 
   const eventDiscussions = useMemo(() => {
-    return discussions.filter(d => d.eventId === eventId);
-  }, [discussions, eventId]);
+    // API already filters by eventId, so just return all discussions
+    return discussions;
+  }, [discussions]);
 
   const filteredDiscussions = useMemo(() => {
     let filtered = eventDiscussions;
@@ -69,17 +86,34 @@ function DiscussionForum() {
     );
   }
 
-  const saveDiscussions = (updatedDiscussions) => {
-    setDiscussions(updatedDiscussions);
-    localStorage.setItem('ems_discussions', JSON.stringify(updatedDiscussions));
-  };
-
-  const handleCreateThread = () => {
+  const handleCreateThread = async () => {
     if (!newThread.title.trim() || !newThread.content.trim()) {
       showError('Please fill in all fields');
       return;
     }
 
+    try {
+      const response = await discussionsAPI.createThread(eventId, {
+        title: newThread.title,
+        content: newThread.content,
+        category: newThread.category
+      });
+
+      if (response.success) {
+        setDiscussions(prev => [response.thread, ...prev]);
+        setNewThread({ title: '', content: '', category: 'General' });
+        setShowNewThread(false);
+        showSuccess('Thread created successfully');
+      } else {
+        showError(response.message || 'Failed to create thread');
+      }
+    } catch (err) {
+      console.error('Error creating thread:', err);
+      showError('Failed to create thread');
+    }
+  };
+
+  const handleCreateThreadOld = () => {
     const thread = {
       id: Date.now().toString(),
       eventId,
@@ -104,7 +138,38 @@ function DiscussionForum() {
     showSuccess('Discussion thread created successfully!');
   };
 
-  const handleAddReply = () => {
+  const handleAddReply = async () => {
+    if (!replyContent.trim()) {
+      showError('Please enter a reply');
+      return;
+    }
+
+    try {
+      const response = await discussionsAPI.addReply(selectedThread._id || selectedThread.id, {
+        content: replyContent
+      });
+
+      if (response.success) {
+        setDiscussions(prev =>
+          prev.map(d =>
+            (d._id === selectedThread._id || d.id === selectedThread.id)
+              ? response.thread
+              : d
+          )
+        );
+        setSelectedThread(response.thread);
+        setReplyContent('');
+        showSuccess('Reply added successfully');
+      } else {
+        showError(response.message || 'Failed to add reply');
+      }
+    } catch (err) {
+      console.error('Error adding reply:', err);
+      showError('Failed to add reply');
+    }
+  };
+
+  const handleAddReplyOld = () => {
     if (!replyContent.trim()) {
       showError('Please enter a reply');
       return;

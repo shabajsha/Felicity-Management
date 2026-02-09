@@ -1,13 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { registrationsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import './PaymentApproval.css';
 
 const PaymentApproval = () => {
   const { user } = useAuth();
-  const { events, registrations, updateRegistration } = useData();
+  const { events } = useData();
   const { showSuccess, showError } = useToast();
 
   const [filterStatus, setFilterStatus] = useState('pending');
@@ -15,35 +16,65 @@ const PaymentApproval = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        const res = await registrationsAPI.getOrganizerRegistrations();
+        if (res.success) {
+          setRegistrations(res.data || res.registrations || []);
+        } else {
+          showError(res.message || 'Failed to load payments');
+        }
+      } catch (err) {
+        console.error('Error fetching payments', err);
+        showError('Failed to load payments');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, [showError]);
 
   // Get organizer's events that require payment
   const paymentEvents = useMemo(() => {
-    if (!user?.organizerId) return [];
-    return events.filter(e => 
-      e.organizerId === user.organizerId && 
-      e.requiresPayment && 
-      e.paymentAmount
-    );
+    const organizerId = user?._id || user?.id;
+    if (!organizerId) return [];
+    return events.filter(e => {
+      const orgId = e.organizer?._id || e.organizer || e.organizerId;
+      return orgId === organizerId && (e.requiresPayment || e.paymentAmount);
+    });
   }, [events, user]);
 
   // Get payment registrations
   const paymentRegistrations = useMemo(() => {
-    const eventIds = paymentEvents.map(e => e.id);
+    const eventIds = paymentEvents.map(e => e.id || e._id);
     return registrations
-      .filter(reg => eventIds.includes(reg.eventId) && reg.paymentStatus !== 'not_required')
+      .filter(reg => {
+        const regEventId = reg.event?._id || reg.event || reg.eventId;
+        return eventIds.includes(regEventId);
+      })
+      .filter(reg => reg.paymentStatus !== 'free')
       .map(reg => ({
         ...reg,
-        event: events.find(e => e.id === reg.eventId)
+        event: reg.event && reg.event.title ? reg.event : paymentEvents.find(e => (e.id || e._id) === (reg.event?._id || reg.eventId || reg.event))
       }))
-      .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
-  }, [registrations, paymentEvents, events]);
+      .sort((a, b) => new Date(b.registeredAt || b.createdAt) - new Date(a.registeredAt || a.createdAt));
+  }, [registrations, paymentEvents]);
 
   // Filter payments
   const filteredPayments = useMemo(() => {
     let filtered = paymentRegistrations;
 
     if (selectedEventFilter !== 'all') {
-      filtered = filtered.filter(p => p.eventId == selectedEventFilter);
+      filtered = filtered.filter(p => {
+        const regEventId = p.event?._id || p.event || p.eventId;
+        return regEventId == selectedEventFilter;
+      });
     }
 
     if (filterStatus !== 'all') {
@@ -66,34 +97,50 @@ const PaymentApproval = () => {
   const stats = useMemo(() => {
     const total = paymentRegistrations.length;
     const pending = paymentRegistrations.filter(p => p.paymentStatus === 'pending').length;
-    const approved = paymentRegistrations.filter(p => p.paymentStatus === 'verified').length;
-    const rejected = paymentRegistrations.filter(p => p.paymentStatus === 'rejected').length;
+    const approved = paymentRegistrations.filter(p => p.paymentStatus === 'paid').length;
+    const rejected = paymentRegistrations.filter(p => p.paymentStatus === 'failed').length;
     const totalRevenue = paymentRegistrations
-      .filter(p => p.paymentStatus === 'verified')
-      .reduce((sum, p) => sum + (p.amount || 0), 0);
+      .filter(p => p.paymentStatus === 'paid')
+      .reduce((sum, p) => sum + (p.amountPaid || p.paymentAmount || p.event?.paymentAmount || 0), 0);
 
     return { total, pending, approved, rejected, totalRevenue };
   }, [paymentRegistrations]);
 
-  const handleApprove = (paymentId) => {
-    updateRegistration(paymentId, { 
-      paymentStatus: 'verified',
-      verifiedAt: new Date().toISOString(),
-      verifiedBy: user.id
-    });
-    showSuccess('Payment approved successfully');
-    setShowDetailModal(false);
+  const handleApprove = async (paymentId, paymentAmount) => {
+    try {
+      const res = await registrationsAPI.updatePayment(paymentId, {
+        paymentStatus: 'paid',
+        amountPaid: paymentAmount
+      });
+      if (res.success) {
+        const updated = res.data;
+        setRegistrations(prev => prev.map(r => (r._id === paymentId || r.id === paymentId ? updated : r)));
+        showSuccess('Payment approved successfully');
+      }
+    } catch (err) {
+      console.error('Error approving payment', err);
+      showError('Failed to approve payment');
+    } finally {
+      setShowDetailModal(false);
+    }
   };
 
-  const handleReject = (paymentId, reason) => {
-    updateRegistration(paymentId, { 
-      paymentStatus: 'rejected',
-      rejectedAt: new Date().toISOString(),
-      rejectedBy: user.id,
-      rejectionReason: reason || 'Payment verification failed'
-    });
-    showSuccess('Payment rejected');
-    setShowDetailModal(false);
+  const handleReject = async (paymentId) => {
+    try {
+      const res = await registrationsAPI.updatePayment(paymentId, {
+        paymentStatus: 'failed'
+      });
+      if (res.success) {
+        const updated = res.data;
+        setRegistrations(prev => prev.map(r => (r._id === paymentId || r.id === paymentId ? updated : r)));
+        showSuccess('Payment rejected');
+      }
+    } catch (err) {
+      console.error('Error rejecting payment', err);
+      showError('Failed to reject payment');
+    } finally {
+      setShowDetailModal(false);
+    }
   };
 
   const handleViewDetails = (payment) => {
@@ -145,7 +192,7 @@ const PaymentApproval = () => {
             <select value={selectedEventFilter} onChange={(e) => setSelectedEventFilter(e.target.value)}>
               <option value="all">All Events</option>
               {paymentEvents.map(event => (
-                <option key={event.id} value={event.id}>{event.title}</option>
+                <option key={event.id || event._id} value={event.id || event._id}>{event.title}</option>
               ))}
             </select>
           </div>
@@ -155,22 +202,24 @@ const PaymentApproval = () => {
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
-              <option value="verified">Verified</option>
-              <option value="rejected">Rejected</option>
+              <option value="paid">Paid</option>
+              <option value="failed">Failed</option>
             </select>
           </div>
         </div>
       </div>
 
       {/* Payments Grid */}
-      {filteredPayments.length === 0 ? (
+      {loading ? (
+        <div className="empty-state"><p>Loading payments...</p></div>
+      ) : filteredPayments.length === 0 ? (
         <div className="empty-state">
           <p>No payment records found</p>
         </div>
       ) : (
         <div className="payments-grid">
           {filteredPayments.map(payment => (
-            <div key={payment.id} className="payment-card">
+            <div key={payment._id || payment.id} className="payment-card">
               <div className="payment-header">
                 <div>
                   <h3>{payment.participantName}</h3>
@@ -188,11 +237,11 @@ const PaymentApproval = () => {
                 </div>
                 <div className="detail-row">
                   <span className="label">Amount:</span>
-                  <span className="value amount">₹{payment.amount || 0}</span>
+                  <span className="value amount">₹{payment.amountPaid || payment.paymentAmount || payment.event?.paymentAmount || 0}</span>
                 </div>
                 <div className="detail-row">
                   <span className="label">Registered:</span>
-                  <span className="value">{formatDate(payment.registeredAt)}</span>
+                  <span className="value">{formatDate(payment.registeredAt || payment.createdAt)}</span>
                 </div>
                 {payment.transactionId && (
                   <div className="detail-row">
@@ -219,16 +268,13 @@ const PaymentApproval = () => {
                   <>
                     <button
                       className="btn-approve"
-                      onClick={() => handleApprove(payment.id)}
+                      onClick={() => handleApprove(payment._id || payment.id, payment.paymentAmount || payment.amountPaid || payment.event?.paymentAmount)}
                     >
                       ✓ Approve
                     </button>
                     <button
                       className="btn-reject"
-                      onClick={() => {
-                        const reason = prompt('Reason for rejection:');
-                        if (reason) handleReject(payment.id, reason);
-                      }}
+                      onClick={() => handleReject(payment._id || payment.id)}
                     >
                       ✗ Reject
                     </button>
@@ -274,7 +320,7 @@ const PaymentApproval = () => {
                 </div>
                 <div className="detail-row">
                   <span className="label">Amount:</span>
-                  <span className="value amount">₹{selectedPayment.amount || 0}</span>
+                  <span className="value amount">₹{selectedPayment.amountPaid || selectedPayment.paymentAmount || selectedPayment.event?.paymentAmount || 0}</span>
                 </div>
                 <div className="detail-row">
                   <span className="label">Status:</span>
@@ -292,7 +338,7 @@ const PaymentApproval = () => {
                 )}
                 <div className="detail-row">
                   <span className="label">Registered At:</span>
-                  <span className="value">{formatDate(selectedPayment.registeredAt)}</span>
+                  <span className="value">{formatDate(selectedPayment.registeredAt || selectedPayment.createdAt)}</span>
                 </div>
               </div>
 
@@ -318,16 +364,13 @@ const PaymentApproval = () => {
                 <>
                   <button
                     className="btn-approve-modal"
-                    onClick={() => handleApprove(selectedPayment.id)}
+                    onClick={() => handleApprove(selectedPayment._id || selectedPayment.id, selectedPayment.paymentAmount || selectedPayment.amountPaid || selectedPayment.event?.paymentAmount)}
                   >
                     Approve Payment
                   </button>
                   <button
                     className="btn-reject-modal"
-                    onClick={() => {
-                      const reason = prompt('Reason for rejection:');
-                      if (reason) handleReject(selectedPayment.id, reason);
-                    }}
+                    onClick={() => handleReject(selectedPayment._id || selectedPayment.id)}
                   >
                     Reject Payment
                   </button>

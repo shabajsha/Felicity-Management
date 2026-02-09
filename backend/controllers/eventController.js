@@ -8,6 +8,13 @@ exports.createEvent = async (req, res, next) => {
   try {
     // Add organizer to req.body
     req.body.organizer = req.user.id;
+    // Auto-approve new events so participants can see them immediately
+    req.body.status = 'approved';
+    // Ensure organizerName is set from user profile if not provided
+    if (!req.body.organizerName && req.user) {
+      const name = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
+      req.body.organizerName = name || req.user.email;
+    }
 
     const event = await Event.create(req.body);
 
@@ -55,7 +62,7 @@ exports.getEvents = async (req, res, next) => {
     } else {
       // Default: only show approved events for non-admin users
       if (!req.user || req.user.role !== 'Admin') {
-        queryObj.status = 'Approved';
+        queryObj.status = 'approved';
       }
     }
 
@@ -75,9 +82,11 @@ exports.getEvents = async (req, res, next) => {
       }
     }
 
-    // Filter by team requirement
-    if (reqQuery.requiresTeam !== undefined) {
-      queryObj.requiresTeam = reqQuery.requiresTeam === 'true';
+    // Filter by team requirement (support both allowTeams and legacy requiresTeam param)
+    if (reqQuery.allowTeams !== undefined) {
+      queryObj.allowTeams = reqQuery.allowTeams === 'true';
+    } else if (reqQuery.requiresTeam !== undefined) {
+      queryObj.allowTeams = reqQuery.requiresTeam === 'true';
     }
 
     // Create query
@@ -146,7 +155,7 @@ exports.getEvent = async (req, res, next) => {
   try {
     const event = await Event.findById(req.params.id)
       .populate('organizer', 'firstName lastName email contactNumber')
-      .populate('club', 'name email');
+      .populate('clubId', 'name contact');
 
     if (!event) {
       return res.status(404).json({
@@ -190,8 +199,8 @@ exports.updateEvent = async (req, res, next) => {
     delete req.body.organizer;
 
     // If event was approved and being modified, set back to pending
-    if (event.status === 'Approved' && req.user.role !== 'Admin') {
-      req.body.status = 'Pending';
+    if (event.status === 'approved' && req.user.role !== 'Admin') {
+      req.body.status = 'pending';
     }
 
     event = await Event.findByIdAndUpdate(req.params.id, req.body, {
@@ -248,14 +257,14 @@ exports.approveEvent = async (req, res, next) => {
   try {
     const { status, rejectionReason } = req.body;
 
-    if (!['Approved', 'Rejected'].includes(status)) {
+    if (!['approved', 'rejected'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Status must be either Approved or Rejected'
+        message: 'Status must be either approved or rejected'
       });
     }
 
-    if (status === 'Rejected' && !rejectionReason) {
+    if (status === 'rejected' && !rejectionReason) {
       return res.status(400).json({
         success: false,
         message: 'Rejection reason is required'
@@ -272,7 +281,7 @@ exports.approveEvent = async (req, res, next) => {
     }
 
     event.status = status;
-    if (status === 'Rejected') {
+    if (status === 'rejected') {
       event.rejectionReason = rejectionReason;
     }
 
@@ -294,7 +303,7 @@ exports.getMyEvents = async (req, res, next) => {
   try {
     const events = await Event.find({ organizer: req.user.id })
       .sort('-createdAt')
-      .populate('club', 'name');
+      .populate('clubId', 'name');
 
     res.status(200).json({
       success: true,
@@ -328,17 +337,19 @@ exports.getEventStats = async (req, res, next) => {
       });
     }
 
-    // Get registration count (will be implemented in Phase 3)
-    // For now, just return basic event info
+    const capacity = event.capacity || event.maxParticipants || 0;
+    const registered = event.registered || 0;
+
+    // Basic event stats; registration aggregation can extend this later
     const stats = {
       eventId: event._id,
       eventTitle: event.title,
-      totalCapacity: event.maxCapacity,
-      registeredParticipants: 0, // Will be calculated from Registration model
-      availableSpots: event.maxCapacity,
+      totalCapacity: capacity,
+      registeredParticipants: registered,
+      availableSpots: Math.max(capacity - registered, 0),
       status: event.status,
-      requiresTeam: event.requiresTeam,
-      requiresPayment: event.fees > 0
+      requiresTeam: event.allowTeams,
+      requiresPayment: (event.registrationFee || 0) > 0
     };
 
     res.status(200).json({

@@ -50,17 +50,20 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Club'
   },
+  organizerProfile: {
+    name: String,
+    category: String,
+    description: String,
+    contactEmail: String,
+    contactNumber: String
+  },
+  preferences: {
+    interests: [{ type: String }],
+    followedClubs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Club' }]
+  },
   isActive: {
     type: Boolean,
     default: true
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
   timestamps: true
@@ -69,7 +72,7 @@ const userSchema = new mongoose.Schema({
 // Hash password before saving
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
-    next();
+    return next();
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

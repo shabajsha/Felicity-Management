@@ -95,7 +95,9 @@ exports.login = async (req, res, next) => {
 // @access  Private
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).populate('clubId');
+    const user = await User.findById(req.user.id)
+      .populate('clubId')
+      .populate('preferences.followedClubs', 'name category contact');
 
     res.status(200).json({
       success: true,
@@ -117,15 +119,36 @@ exports.updateProfile = async (req, res, next) => {
       contactNumber: req.body.contactNumber
     };
 
+    // Participant preferences
+    if (Array.isArray(req.body.interests)) {
+      fieldsToUpdate['preferences.interests'] = req.body.interests;
+    }
+    if (Array.isArray(req.body.followedClubs)) {
+      fieldsToUpdate['preferences.followedClubs'] = req.body.followedClubs;
+    }
+
     // Don't allow updating college for IIIT participants
     if (req.user.participantType !== 'IIIT' && req.body.college) {
       fieldsToUpdate.college = req.body.college;
     }
 
+    // Organizer profile updates (only for organizer role)
+    if (req.user.role === 'Organizer' && req.body.organizerProfile) {
+      const { name, category, description, contactEmail, contactNumber } = req.body.organizerProfile;
+      fieldsToUpdate.organizerProfile = {
+        ...(req.user.organizerProfile || {}),
+        ...(name && { name }),
+        ...(category && { category }),
+        ...(description && { description }),
+        ...(contactEmail && { contactEmail }),
+        ...(contactNumber && { contactNumber })
+      };
+    }
+
     const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
       new: true,
       runValidators: true
-    });
+    }).populate('preferences.followedClubs', 'name category contact');
 
     res.status(200).json({
       success: true,

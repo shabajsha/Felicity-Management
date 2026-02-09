@@ -54,7 +54,11 @@ const feedbackSchema = new mongoose.Schema({
   helpful: {
     type: Number,
     default: 0
-  }
+  },
+  helpfulBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, {
   timestamps: true
 });

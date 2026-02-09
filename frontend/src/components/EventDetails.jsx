@@ -1,10 +1,10 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { useData } from '../context/DataContext.jsx';
 import { useToast } from './Toast.jsx';
-import { formatDate, formatTime, getEventAvailability } from '../utils/helpers';
+import { formatDate, formatTime, getEventAvailability, getOrganizerName } from '../utils/helpers';
 import { USER_ROLES, EVENT_TYPES } from '../utils/constants';
+import { eventsAPI, registrationsAPI } from '../utils/api';
 import TeamRegistrationForm from './TeamRegistrationForm.jsx';
 import './EventDetails.css';
 
@@ -12,18 +12,49 @@ function EventDetails({ onRegister, onDelete }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events, registerForEvent } = useData();
   const { showSuccess, showError } = useToast();
   const [showTeamModal, setShowTeamModal] = useState(false);
-  
-  const event = events.find(e => e.id === parseInt(id) || e.id === id.toString());
+  const [event, setEvent] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  if (!event) {
+  useEffect(() => {
+    const fetchEvent = async () => {
+      try {
+        setLoading(true);
+        const response = await eventsAPI.getEventById(id);
+        if (response.success) {
+          setEvent(response.data);
+        } else {
+          setError(response.message || 'Event not found');
+        }
+      } catch (err) {
+        console.error('Error fetching event:', err);
+        setError('Failed to load event details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvent();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="event-details-container">
+        <div className="loading">
+          <p>Loading event details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !event) {
     return (
       <div className="event-details-container">
         <div className="not-found">
           <h2>Event Not Found</h2>
-          <p>Sorry, we couldn't find the event you're looking for.</p>
+          <p>{error || "Sorry, we couldn't find the event you're looking for."}</p>
           <Link to="/" className="btn btn-primary">Back to Events</Link>
         </div>
       </div>
@@ -34,32 +65,74 @@ function EventDetails({ onRegister, onDelete }) {
   const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
   const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
   const availabilityStatus = getEventAvailability(event);
+  const organizerDisplayName = getOrganizerName(event.organizer, event.organizerName);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
-      onDelete(event.id);
-      navigate('/');
+      try {
+        const response = await eventsAPI.deleteEvent(event._id || event.id);
+        if (response.success) {
+          showSuccess('Event deleted successfully');
+          navigate('/');
+        } else {
+          showError(response.message || 'Failed to delete event');
+        }
+      } catch (err) {
+        console.error('Error deleting event:', err);
+        showError('Failed to delete event');
+      }
     }
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     console.log('handleRegister called', { allowTeams: event.allowTeams });
+    
+    if (!user) {
+      showError('Please login to register');
+      return;
+    }
+    
     if (event.allowTeams) {
       console.log('Opening team modal');
       setShowTeamModal(true);
     } else {
-      onRegister(event.id);
+      try {
+        const response = await registrationsAPI.registerForEvent(event._id || event.id);
+        if (response.success) {
+          showSuccess('Successfully registered for event!');
+          // Refresh event data to show updated registration count
+          const eventResponse = await eventsAPI.getEventById(id);
+          if (eventResponse.success) {
+            setEvent(eventResponse.data);
+          }
+        } else {
+          showError(response.message || 'Failed to register for event');
+        }
+      } catch (err) {
+        console.error('Error registering for event:', err);
+        showError(err?.message || 'Failed to register for event');
+      }
     }
   };
 
-  const handleTeamSubmit = (teamData) => {
-    const result = registerForEvent(user.id, event.id, teamData);
-    if (result.success) {
-      showSuccess('Team registered successfully!');
-      setShowTeamModal(false);
-      navigate('/dashboard');
-    } else {
-      showError(result.message || 'Failed to register team');
+  const handleTeamSubmit = async (teamData) => {
+    try {
+      const response = await registrationsAPI.registerForEvent(event._id || event.id, teamData);
+      if (response.success) {
+        showSuccess('Team registered successfully!');
+        setShowTeamModal(false);
+        // Refresh event data
+        const eventResponse = await eventsAPI.getEventById(id);
+        if (eventResponse.success) {
+          setEvent(eventResponse.data);
+        }
+        navigate('/dashboard');
+      } else {
+        showError(response.message || 'Failed to register team');
+      }
+    } catch (err) {
+      console.error('Error registering team:', err);
+      showError(err?.message || 'Failed to register team');
     }
   };
 
@@ -83,7 +156,7 @@ function EventDetails({ onRegister, onDelete }) {
           <h1 className="event-title">{event.title}</h1>
           <p className="event-organizer">
             <span className="icon">👤</span>
-            Organized by <strong>{event.organizer}</strong>
+            Organized by <strong>{organizerDisplayName}</strong>
           </p>
         </div>
 

@@ -13,47 +13,57 @@ export const PARTICIPANT_TYPES = {
 
 // Event Types
 export const EVENT_TYPES = {
-  NORMAL: 'Normal',
+  EVENT: 'Event',
+  WORKSHOP: 'Workshop',
+  COMPETITION: 'Competition',
+  SEMINAR: 'Seminar',
   MERCHANDISE: 'Merchandise',
 };
 
 // Event Status
 export const EVENT_STATUS = {
-  DRAFT: 'Draft',
-  PUBLISHED: 'Published',
-  ONGOING: 'Ongoing',
-  COMPLETED: 'Completed',
-  CLOSED: 'Closed',
+  DRAFT: 'draft',
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  PUBLISHED: 'published',
+  ONGOING: 'ongoing',
+  COMPLETED: 'completed',
+  CLOSED: 'closed',
+  // Aliases for backward compatibility
+  UPCOMING: 'upcoming',
+  PAST: 'past',
 };
 
 // Registration Status
 export const REGISTRATION_STATUS = {
-  PENDING: 'Pending',
-  CONFIRMED: 'Confirmed',
-  CANCELLED: 'Cancelled',
-  REJECTED: 'Rejected',
-  COMPLETED: 'Completed',
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  CANCELLED: 'cancelled',
+  REJECTED: 'rejected',
+  COMPLETED: 'completed',
 };
 
 // Payment Status (for Merchandise)
 export const PAYMENT_STATUS = {
-  PENDING: 'Pending',
-  APPROVED: 'Approved',
-  REJECTED: 'Rejected',
+  PENDING: 'pending',
+  PAID: 'paid',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  FREE: 'free',
+  FAILED: 'failed',
 };
 
 // Event Categories
 export const EVENT_CATEGORIES = [
-  'Technology',
-  'Entertainment',
-  'Food & Drink',
+  'Technical',
+  'Cultural',
   'Sports',
-  'Education',
-  'Business',
-  'Arts & Culture',
-  'Gaming',
+  'Academic',
   'Workshop',
   'Competition',
+  'Seminar',
+  'Other',
 ];
 
 // Organizer Categories

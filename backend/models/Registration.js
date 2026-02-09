@@ -26,7 +26,8 @@ const registrationSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
-    index: true
+    index: true,
+    default: () => `EVT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
   },
   status: {
     type: String,
@@ -41,6 +42,14 @@ const registrationSchema = new mongoose.Schema({
   paymentAmount: {
     type: Number,
     default: 0
+  },
+  amountPaid: {
+    type: Number,
+    default: 0
+  },
+  paymentMethod: {
+    type: String,
+    trim: true
   },
   paymentScreenshot: {
     type: String
@@ -79,14 +88,6 @@ const registrationSchema = new mongoose.Schema({
   registrationDate: {
     type: Date,
     default: Date.now
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
-  },
-  updatedAt: {
-    type: Date,
-    default: Date.now
   }
 }, {
   timestamps: true
@@ -96,12 +97,11 @@ const registrationSchema = new mongoose.Schema({
 registrationSchema.index({ event: 1, user: 1 });
 registrationSchema.index({ status: 1 });
 
-// Generate unique ticket ID
-registrationSchema.pre('save', async function(next) {
+// Generate unique ticket ID before validation
+registrationSchema.pre('validate', function() {
   if (this.isNew && !this.ticketId) {
     this.ticketId = `EVT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
   }
-  next();
 });
 
 module.exports = mongoose.model('Registration', registrationSchema);

@@ -20,11 +20,14 @@ const apiCall = async (endpoint, options = {}) => {
   };
 
   try {
+    console.log('API Request:', `${API_BASE_URL}${endpoint}`, config);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
     const data = await response.json();
 
+    console.log('API Response:', response.status, data);
+
     if (!response.ok) {
-      throw new Error(data.message || 'API request failed');
+      throw new Error(data.message || `API request failed with status ${response.status}`);
     }
 
     return data;
@@ -70,9 +73,25 @@ export const eventsAPI = {
     return apiCall(`/events${queryString ? `?${queryString}` : ''}`);
   },
 
+  // Alias for getAll
+  getAllEvents: (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiCall(`/events${queryString ? `?${queryString}` : ''}`);
+  },
+
   getById: (id) => apiCall(`/events/${id}`),
 
+  // Alias for getById
+  getEventById: (id) => apiCall(`/events/${id}`),
+
   create: (eventData) =>
+    apiCall('/events', {
+      method: 'POST',
+      body: JSON.stringify(eventData),
+    }),
+
+  // Alias for create
+  createEvent: (eventData) =>
     apiCall('/events', {
       method: 'POST',
       body: JSON.stringify(eventData),
@@ -84,7 +103,20 @@ export const eventsAPI = {
       body: JSON.stringify(eventData),
     }),
 
+  // Alias for update
+  updateEvent: (id, eventData) =>
+    apiCall(`/events/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(eventData),
+    }),
+
   delete: (id) =>
+    apiCall(`/events/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Alias for delete
+  deleteEvent: (id) =>
     apiCall(`/events/${id}`, {
       method: 'DELETE',
     }),
@@ -108,13 +140,35 @@ export const registrationsAPI = {
       body: JSON.stringify(registrationData),
     }),
 
+  // Alias for register - accepts eventId and optional formData
+  registerForEvent: (eventId, formData = {}) =>
+    apiCall('/registrations', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, ...formData }),
+    }),
+
   getMyRegistrations: () => apiCall('/registrations/my-registrations'),
+
+  // Alias for getMyRegistrations
+  getUserRegistrations: () => apiCall('/registrations/my-registrations'),
 
   getById: (id) => apiCall(`/registrations/${id}`),
 
   getEventRegistrations: (eventId) => apiCall(`/registrations/event/${eventId}`),
 
+  updateRegistrationStatus: (id, status) =>
+    apiCall(`/registrations/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status }),
+    }),
+
   cancel: (id) =>
+    apiCall(`/registrations/${id}/cancel`, {
+      method: 'PUT',
+    }),
+
+  // Alias for cancel
+  cancelRegistration: (id) =>
     apiCall(`/registrations/${id}/cancel`, {
       method: 'PUT',
     }),
@@ -129,6 +183,8 @@ export const registrationsAPI = {
     apiCall(`/registrations/${id}/checkin`, {
       method: 'PUT',
     }),
+
+  getOrganizerRegistrations: () => apiCall('/registrations/organizer/my-registrations'),
 
   getStats: () => apiCall('/registrations/stats/overview'),
 };
@@ -198,6 +254,12 @@ export const adminAPI = {
   getStats: () => apiCall('/admin/stats'),
 
   getPendingEvents: () => apiCall('/admin/pending-events'),
+
+  createOrganizer: (organizerData) =>
+    apiCall('/admin/organizers', {
+      method: 'POST',
+      body: JSON.stringify(organizerData),
+    }),
 };
 
 // Discussions API
@@ -206,6 +268,13 @@ export const discussionsAPI = {
     apiCall('/discussions', {
       method: 'POST',
       body: JSON.stringify(discussionData),
+    }),
+
+  // Alias for create - accepts eventId and thread data
+  createThread: (eventId, threadData) =>
+    apiCall('/discussions', {
+      method: 'POST',
+      body: JSON.stringify({ eventId, ...threadData }),
     }),
 
   getEventDiscussions: (eventId, params = {}) => {

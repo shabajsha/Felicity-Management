@@ -22,7 +22,7 @@ exports.createDiscussion = async (req, res, next) => {
     const isRegistered = await Registration.findOne({
       event: eventId,
       user: req.user.id,
-      status: 'Confirmed'
+      status: 'confirmed'
     });
 
     const isOrganizer = event.organizer.toString() === req.user.id;
@@ -131,7 +131,7 @@ exports.replyToDiscussion = async (req, res, next) => {
     const isRegistered = await Registration.findOne({
       event: discussion.event._id,
       user: req.user.id,
-      status: 'Confirmed'
+      status: 'confirmed'
     });
 
     const isOrganizer = discussion.event.organizer.toString() === req.user.id;

@@ -26,6 +26,7 @@ exports.getClubs = async (req, res, next) => {
     const clubs = await Club.find({ isActive: true })
       .populate('headCoordinator', 'firstName lastName email')
       .populate('members', 'firstName lastName email')
+      .populate('organizers', 'firstName lastName email')
       .sort('name');
 
     res.status(200).json({
@@ -45,7 +46,8 @@ exports.getClub = async (req, res, next) => {
   try {
     const club = await Club.findById(req.params.id)
       .populate('headCoordinator', 'firstName lastName email contactNumber')
-      .populate('members', 'firstName lastName email');
+      .populate('members', 'firstName lastName email')
+      .populate('organizers', 'firstName lastName email');
 
     if (!club) {
       return res.status(404).json({
@@ -55,7 +57,7 @@ exports.getClub = async (req, res, next) => {
     }
 
     // Get club's events
-    const events = await Event.find({ club: req.params.id })
+    const events = await Event.find({ clubId: req.params.id })
       .sort('-date')
       .limit(10);
 
@@ -86,10 +88,10 @@ exports.updateClub = async (req, res, next) => {
     }
 
     // Check authorization (Admin or Club Head Coordinator)
-    if (
-      req.user.role !== 'Admin' &&
-      club.headCoordinator.toString() !== req.user.id
-    ) {
+    const isHeadCoordinator = club.headCoordinator && club.headCoordinator.toString() === req.user.id;
+    const isOrganizer = club.organizers && club.organizers.some(org => org.toString() === req.user.id);
+    
+    if (req.user.role !== 'Admin' && !isHeadCoordinator && !isOrganizer) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this club'
@@ -154,10 +156,10 @@ exports.addMember = async (req, res, next) => {
     }
 
     // Check authorization
-    if (
-      req.user.role !== 'Admin' &&
-      club.headCoordinator.toString() !== req.user.id
-    ) {
+    const isHeadCoordinator = club.headCoordinator && club.headCoordinator.toString() === req.user.id;
+    const isOrganizer = club.organizers && club.organizers.some(org => org.toString() === req.user.id);
+    
+    if (req.user.role !== 'Admin' && !isHeadCoordinator && !isOrganizer) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to add members to this club'
@@ -210,10 +212,10 @@ exports.removeMember = async (req, res, next) => {
     }
 
     // Check authorization
-    if (
-      req.user.role !== 'Admin' &&
-      club.headCoordinator.toString() !== req.user.id
-    ) {
+    const isHeadCoordinator = club.headCoordinator && club.headCoordinator.toString() === req.user.id;
+    const isOrganizer = club.organizers && club.organizers.some(org => org.toString() === req.user.id);
+    
+    if (req.user.role !== 'Admin' && !isHeadCoordinator && !isOrganizer) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to remove members from this club'
@@ -221,7 +223,7 @@ exports.removeMember = async (req, res, next) => {
     }
 
     // Cannot remove head coordinator
-    if (club.headCoordinator.toString() === req.params.userId) {
+    if (club.headCoordinator && club.headCoordinator.toString() === req.params.userId) {
       return res.status(400).json({
         success: false,
         message: 'Cannot remove head coordinator'
@@ -258,11 +260,11 @@ exports.getClubStats = async (req, res, next) => {
       });
     }
 
-    // Check authorization
-    if (
-      req.user.role !== 'Admin' &&
-      club.headCoordinator.toString() !== req.user.id
-    ) {
+    // Check authorization - use headCoordinator if available, otherwise check organizers
+    const isHeadCoordinator = club.headCoordinator && club.headCoordinator.toString() === req.user.id;
+    const isOrganizer = club.organizers && club.organizers.some(org => org.toString() === req.user.id);
+    
+    if (req.user.role !== 'Admin' && !isHeadCoordinator && !isOrganizer) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to view club statistics'
@@ -270,14 +272,14 @@ exports.getClubStats = async (req, res, next) => {
     }
 
     // Get event statistics
-    const totalEvents = await Event.countDocuments({ club: req.params.id });
+    const totalEvents = await Event.countDocuments({ clubId: req.params.id });
     const approvedEvents = await Event.countDocuments({ 
-      club: req.params.id, 
-      status: 'Approved' 
+      clubId: req.params.id, 
+      status: 'approved' 
     });
     const upcomingEvents = await Event.countDocuments({
-      club: req.params.id,
-      status: 'Approved',
+      clubId: req.params.id,
+      status: 'approved',
       date: { $gte: new Date() }
     });
 

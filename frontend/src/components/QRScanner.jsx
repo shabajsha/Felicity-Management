@@ -66,11 +66,11 @@ function QRScanner() {
     }
 
     const registration = eventRegistrations.find(r => 
-      r.ticketId === ticketId && r.status === 'approved'
+      r.ticketId === ticketId && r.status === 'confirmed'
     );
 
     if (!registration) {
-      showError('Invalid ticket ID or registration not approved');
+      showError('Invalid ticket ID or registration not confirmed');
       setManualTicketId('');
       return;
     }
@@ -120,8 +120,8 @@ function QRScanner() {
       return;
     }
 
-    if (registration.status !== 'approved') {
-      showError('Registration must be approved before check-in');
+    if (registration.status !== 'confirmed') {
+      showError('Registration must be confirmed before check-in');
       return;
     }
 

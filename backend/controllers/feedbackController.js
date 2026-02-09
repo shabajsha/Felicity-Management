@@ -30,8 +30,8 @@ exports.submitFeedback = async (req, res, next) => {
     const registration = await Registration.findOne({
       event: eventId,
       user: req.user.id,
-      status: 'Confirmed',
-      'checkIn.status': true
+      status: 'confirmed',
+      checkedIn: true
     });
 
     if (!registration) {
@@ -275,6 +275,19 @@ exports.markHelpful = async (req, res, next) => {
       });
     }
 
+    // Check if user already marked this as helpful
+    if (feedback.helpfulBy && feedback.helpfulBy.includes(req.user.id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already marked this feedback as helpful'
+      });
+    }
+
+    // Add user to helpfulBy array and increment count
+    if (!feedback.helpfulBy) {
+      feedback.helpfulBy = [];
+    }
+    feedback.helpfulBy.push(req.user.id);
     feedback.helpful += 1;
     await feedback.save();
 

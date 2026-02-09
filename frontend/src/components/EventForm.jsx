@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { eventsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext.jsx';
 import './EventForm.css';
 
 function EventForm({ events, onSubmit, isEdit = false }) {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -18,24 +21,41 @@ function EventForm({ events, onSubmit, isEdit = false }) {
   });
 
   const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState(null);
 
   useEffect(() => {
-    if (isEdit && id && events) {
-      const eventToEdit = events.find(e => e.id === parseInt(id));
-      if (eventToEdit) {
-        setFormData({
-          title: eventToEdit.title,
-          date: eventToEdit.date,
-          time: eventToEdit.time,
-          location: eventToEdit.location,
-          description: eventToEdit.description,
-          category: eventToEdit.category,
-          organizer: eventToEdit.organizer,
-          capacity: eventToEdit.capacity
-        });
+    const fetchEvent = async () => {
+      if (isEdit && id) {
+        try {
+          setLoading(true);
+          const response = await eventsAPI.getEventById(id);
+          if (response.success && response.data) {
+            const event = response.data;
+            setFormData({
+              title: event.title || '',
+              date: event.date ? event.date.split('T')[0] : '',
+              time: event.time || '',
+              location: event.location || '',
+              description: event.description || '',
+              category: event.category || 'Technology',
+              organizer: event.organizerName || event.organizer || '',
+              capacity: event.capacity || event.maxParticipants || 100
+            });
+          } else {
+            setSubmitError('Event not found');
+          }
+        } catch (err) {
+          console.error('Error fetching event:', err);
+          setSubmitError('Failed to load event details');
+        } finally {
+          setLoading(false);
+        }
       }
-    }
-  }, [isEdit, id, events]);
+    };
+
+    fetchEvent();
+  }, [isEdit, id]);
 
   const validateForm = () => {
     const newErrors = {};
@@ -100,16 +120,32 @@ function EventForm({ events, onSubmit, isEdit = false }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitError(null);
     
     if (validateForm()) {
-      if (isEdit) {
-        onSubmit(parseInt(id), formData);
-      } else {
-        onSubmit(formData);
+      try {
+        setLoading(true);
+        let response;
+        
+        if (isEdit) {
+          response = await eventsAPI.updateEvent(id, formData);
+        } else {
+          response = await eventsAPI.createEvent(formData);
+        }
+        
+        if (response.success) {
+          navigate('/');
+        } else {
+          setSubmitError(response.message || 'Failed to save event');
+        }
+      } catch (err) {
+        console.error('Error saving event:', err);
+        setSubmitError('Failed to save event. Please try again.');
+      } finally {
+        setLoading(false);
       }
-      navigate('/');
     }
   };
 
@@ -120,6 +156,12 @@ function EventForm({ events, onSubmit, isEdit = false }) {
         <p className="form-subtitle">
           {isEdit ? 'Update your event details' : 'Fill in the details to create an amazing event'}
         </p>
+
+        {submitError && (
+          <div className="error-banner">
+            <p>{submitError}</p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="event-form">
           <div className="form-group">
@@ -242,11 +284,11 @@ function EventForm({ events, onSubmit, isEdit = false }) {
           </div>
 
           <div className="form-actions">
-            <button type="button" onClick={() => navigate('/')} className="btn btn-secondary">
+            <button type="button" onClick={() => navigate('/')} className="btn btn-secondary" disabled={loading}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              {isEdit ? 'Update Event' : 'Create Event'}
+            <button type="submit" className="btn btn-primary" disabled={loading}>
+              {loading ? 'Saving...' : (isEdit ? 'Update Event' : 'Create Event')}
             </button>
           </div>
         </form>

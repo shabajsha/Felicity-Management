@@ -1,22 +1,42 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { clubsAPI } from '../utils/api';
 import { ORGANIZER_CATEGORIES } from '../utils/constants';
 import './ClubsPage.css';
 
 function ClubsPage() {
-  const { organizers } = useData();
   const { user, login } = useAuth();
   const { showSuccess } = useToast();
+  const [clubs, setClubs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
 
   const followedClubs = user?.followedClubs || [];
 
+  useEffect(() => {
+    const fetchClubs = async () => {
+      try {
+        setLoading(true);
+        const response = await clubsAPI.getAllClubs();
+        if (response.success) {
+          setClubs(response.clubs);
+        }
+      } catch (err) {
+        console.error('Error fetching clubs:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchClubs();
+  }, []);
+
   const filteredOrganizers = useMemo(() => {
-    let result = organizers;
+    let result = clubs;
 
     if (searchTerm) {
       const lower = searchTerm.toLowerCase();
@@ -32,7 +52,7 @@ function ClubsPage() {
     }
 
     return result;
-  }, [organizers, searchTerm, filterCategory]);
+  }, [clubs, searchTerm, filterCategory]);
 
   const handleFollowToggle = (orgId) => {
     if (!user) return;

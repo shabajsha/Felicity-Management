@@ -3,6 +3,9 @@ const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const Club = require('../models/Club');
 
+// Helper: generate a simple random password
+const generatePassword = () => `Org@${Math.random().toString(36).slice(2, 8)}`;
+
 // @desc    Get all users
 // @route   GET /api/admin/users
 // @access  Private (Admin only)
@@ -207,14 +210,14 @@ exports.getSystemStats = async (req, res, next) => {
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
     const upcomingEvents = await Event.countDocuments({
-      status: 'Approved',
+      status: 'approved',
       date: { $gte: new Date() }
     });
 
     // Registration statistics
     const totalRegistrations = await Registration.countDocuments();
     const confirmedRegistrations = await Registration.countDocuments({ 
-      status: 'Confirmed' 
+      status: 'confirmed' 
     });
     const registrationsByStatus = await Registration.aggregate([
       { $group: { _id: '$status', count: { $sum: 1 } } }
@@ -282,15 +285,74 @@ exports.getSystemStats = async (req, res, next) => {
 // @access  Private (Admin only)
 exports.getPendingEvents = async (req, res, next) => {
   try {
-    const pendingEvents = await Event.find({ status: 'Pending' })
+    const pendingEvents = await Event.find({ status: 'pending' })
       .populate('organizer', 'firstName lastName email')
-      .populate('club', 'name')
+      .populate('clubId', 'name')
       .sort('-createdAt');
 
     res.status(200).json({
       success: true,
       count: pendingEvents.length,
       data: pendingEvents
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Create an organizer account (admin provisioned)
+// @route   POST /api/admin/organizers
+// @access  Private (Admin only)
+exports.createOrganizer = async (req, res, next) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      contactNumber,
+      organizerName,
+      category,
+      description,
+      contactEmail,
+      contactPhone
+    } = req.body;
+
+    // Basic uniqueness check
+    const existing = await User.findOne({ email: email.toLowerCase() });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Email already in use' });
+    }
+
+    const password = generatePassword();
+
+    const user = await User.create({
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      contactNumber,
+      role: 'Organizer',
+      password,
+      organizerProfile: {
+        name: organizerName || `${firstName} ${lastName}`,
+        category,
+        description,
+        contactEmail: contactEmail || email,
+        contactNumber: contactPhone || contactNumber
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: user._id,
+        email: user.email,
+        role: user.role,
+        organizerProfile: user.organizerProfile
+      },
+      credentials: {
+        email: user.email,
+        password
+      }
     });
   } catch (error) {
     next(error);

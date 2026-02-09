@@ -1,22 +1,44 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { formatDate, getEventStatus } from '../utils/helpers';
 import { EVENT_STATUS } from '../utils/constants';
+import { registrationsAPI } from '../utils/api';
 import './OrganizerDashboard.css';
 
 const OrganizerDashboard = () => {
   const { user } = useAuth();
-  const { events, registrations, organizers } = useData();
+  const { events } = useData();
   const [activeTab, setActiveTab] = useState('overview');
+  const [registrations, setRegistrations] = useState([]);
+  const [loadingRegs, setLoadingRegs] = useState(false);
+
+  // Load all registrations for this organizer from backend
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoadingRegs(true);
+        const res = await registrationsAPI.getOrganizerRegistrations();
+        if (res.success) {
+          setRegistrations(res.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching organizer registrations', err);
+      } finally {
+        setLoadingRegs(false);
+      }
+    };
+    if (user?.role === 'Organizer') {
+      load();
+    }
+  }, [user]);
 
   // Get organizer's events
   const myEvents = useMemo(() => {
-    const organizer = organizers.find(org => org.id === user.organizerId);
-    if (!organizer) return [];
-    return events.filter(event => event.organizerId === organizer.id);
-  }, [events, organizers, user.organizerId]);
+    if (!user) return [];
+    return events.filter(event => (event.organizer === user.id) || (event.organizer?._id === user.id));
+  }, [events, user]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -25,11 +47,11 @@ const OrganizerDashboard = () => {
     const upcomingEvents = myEvents.filter(event => new Date(event.date) > now).length;
     const pastEvents = totalEvents - upcomingEvents;
     
-    const eventIds = myEvents.map(e => e.id);
-    const myRegistrations = registrations.filter(reg => eventIds.includes(reg.eventId));
+    const eventIds = myEvents.map(e => e._id || e.id);
+    const myRegistrations = registrations.filter(reg => eventIds.includes(reg.event?._id?.toString() || reg.eventId));
     const totalRegistrations = myRegistrations.length;
     const pendingApprovals = myRegistrations.filter(reg => reg.status === 'pending').length;
-    const approvedRegistrations = myRegistrations.filter(reg => reg.status === 'approved').length;
+    const confirmedRegistrations = myRegistrations.filter(reg => reg.status === 'confirmed').length;
     
     return {
       totalEvents,
@@ -37,21 +59,17 @@ const OrganizerDashboard = () => {
       pastEvents,
       totalRegistrations,
       pendingApprovals,
-      approvedRegistrations
+      confirmedRegistrations
     };
   }, [myEvents, registrations]);
 
   // Get recent registrations (last 10)
   const recentRegistrations = useMemo(() => {
-    const eventIds = myEvents.map(e => e.id);
+    const eventIds = myEvents.map(e => e._id || e.id);
     return registrations
-      .filter(reg => eventIds.includes(reg.eventId))
-      .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt))
-      .slice(0, 10)
-      .map(reg => ({
-        ...reg,
-        event: myEvents.find(e => e.id === reg.eventId)
-      }));
+      .filter(reg => eventIds.includes(reg.event?._id?.toString() || reg.eventId))
+      .sort((a, b) => new Date(b.createdAt || b.registrationDate || 0) - new Date(a.createdAt || a.registrationDate || 0))
+      .slice(0, 10);
   }, [myEvents, registrations]);
 
   // Group events by status
@@ -88,7 +106,10 @@ const OrganizerDashboard = () => {
   );
 
   const renderEventCard = (event) => {
-    const eventRegs = registrations.filter(r => r.eventId === event.id);
+    const eventRegs = registrations.filter(r => {
+      const eid = r.event?._id?.toString() || r.eventId;
+      return eid === (event._id || event.id)?.toString();
+    });
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
     
     return (
@@ -130,7 +151,7 @@ const OrganizerDashboard = () => {
       {/* Statistics Cards */}
       <div className="stats-grid">
         {renderStatCard('Total Events', stats.totalEvents, `${stats.upcomingEvents} upcoming`, '📅')}
-        {renderStatCard('Total Registrations', stats.totalRegistrations, `${stats.approvedRegistrations} approved`, '👥')}
+        {renderStatCard('Total Registrations', stats.totalRegistrations, `${stats.confirmedRegistrations} confirmed`, '👥')}
         {renderStatCard('Pending Approvals', stats.pendingApprovals, 'Requires action', '⏳')}
         {renderStatCard('Past Events', stats.pastEvents, 'Completed', '✅')}
       </div>

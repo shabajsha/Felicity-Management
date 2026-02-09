@@ -10,7 +10,7 @@ const EventFormBuilder = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events, organizers, addEvent, updateEvent } = useData();
+  const { events, addEvent, updateEvent } = useData();
   const { showSuccess, showError } = useToast();
 
   const isEditMode = !!id;
@@ -23,8 +23,8 @@ const EventFormBuilder = () => {
     time: '',
     location: '',
     venue: '',
-    type: EVENT_TYPES.WORKSHOP,
-    category: EVENT_CATEGORIES.TECHNICAL,
+    type: 'Event',
+    category: 'Technical',
     maxParticipants: 50,
     registrationDeadline: '',
     participantType: PARTICIPANT_TYPES.INDIVIDUAL,
@@ -160,8 +160,11 @@ const EventFormBuilder = () => {
     
     if (!eventData.title.trim()) newErrors.title = 'Title is required';
     if (!eventData.description.trim()) newErrors.description = 'Description is required';
+    else if (eventData.description.trim().length < 20) newErrors.description = 'Description must be at least 20 characters';
     if (!eventData.date) newErrors.date = 'Date is required';
     if (!eventData.location.trim()) newErrors.location = 'Location is required';
+    if (!eventData.category) newErrors.category = 'Category is required';
+    if (!eventData.type) newErrors.type = 'Type is required';
     if (eventData.maxParticipants < 1) newErrors.maxParticipants = 'Max participants must be at least 1';
     
     const eventDate = new Date(eventData.date);
@@ -187,7 +190,7 @@ const EventFormBuilder = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -195,29 +198,48 @@ const EventFormBuilder = () => {
       return;
     }
 
-    const organizer = organizers.find(org => org.id === user.organizerId);
-    if (!organizer) {
+    const organizerId = user?._id || user?.id;
+    const organizerName = user?.organizerProfile?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    if (!organizerId) {
       showError('Organizer profile not found');
       return;
     }
 
     const eventPayload = {
       ...eventData,
-      organizerId: organizer.id,
-      organizer: organizer.name,
+      organizer: organizerId,
+      organizerName,
+      capacity: Number(eventData.maxParticipants) || 0,
+      maxParticipants: Number(eventData.maxParticipants) || 0,
+      registrationFee: Number(eventData.registrationFee) || 0,
+      minTeamSize: Number(eventData.minTeamSize) || 0,
+      maxTeamSize: Number(eventData.maxTeamSize) || 0,
+      requiresPayment: Boolean(eventData.requiresPayment),
+      allowTeams: Boolean(eventData.allowTeams),
+      type: eventData.type || 'Event',
+      category: eventData.category || 'Technical',
       customFields,
       createdAt: existingEvent?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
 
-    if (isEditMode) {
-      updateEvent(id, eventPayload);
-      showSuccess('Event updated successfully!');
-      navigate(`/event/${id}`);
-    } else {
-      const newEventId = addEvent(eventPayload);
-      showSuccess('Event created successfully!');
-      navigate(`/event/${newEventId}`);
+    try {
+      if (isEditMode) {
+        await updateEvent(id, eventPayload);
+        showSuccess('Event updated successfully!');
+        navigate(`/event/${id}`);
+      } else {
+        const newEventId = await addEvent(eventPayload);
+        if (newEventId) {
+          showSuccess('Event created successfully!');
+          navigate(`/event/${newEventId}`);
+        } else {
+          showError('Failed to create event');
+        }
+      }
+    } catch (err) {
+      console.error('Error creating event', err);
+      showError('Failed to save event');
     }
   };
 

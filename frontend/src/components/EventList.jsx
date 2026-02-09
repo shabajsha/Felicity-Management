@@ -1,15 +1,42 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import EventCard from './EventCard';
 import { searchEvents, filterEvents, sortEvents } from '../utils/helpers';
 import { EVENT_TYPES, ELIGIBILITY_TYPES } from '../utils/constants';
+import { eventsAPI } from '../utils/api';
 import './EventList.css';
 
-function EventList({ events, onDelete, onRegister }) {
+function EventList({ events: propEvents, onDelete, onRegister }) {
+  const [events, setEvents] = useState(propEvents || []);
+  const [loading, setLoading] = useState(!propEvents);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('All');
   const [filterEligibility, setFilterEligibility] = useState('All');
   const [sortBy, setSortBy] = useState('date');
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        setLoading(true);
+        const response = await eventsAPI.getAllEvents();
+        if (response.success) {
+          setEvents(response.data || []);
+        } else {
+          setError(response.message || 'Failed to fetch events');
+        }
+      } catch (err) {
+        console.error('Error fetching events:', err);
+        setError('Failed to load events. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (!propEvents) {
+      fetchEvents();
+    }
+  }, [propEvents]);
 
   const filteredEvents = useMemo(() => {
     let result = searchEvents(events, searchTerm);
@@ -73,7 +100,15 @@ function EventList({ events, onDelete, onRegister }) {
         </div>
       </div>
 
-      {filteredEvents.length === 0 ? (
+      {loading ? (
+        <div className="loading-message">
+          <p>Loading events...</p>
+        </div>
+      ) : error ? (
+        <div className="error-message">
+          <p>{error}</p>
+        </div>
+      ) : filteredEvents.length === 0 ? (
         <div className="no-events">
           <p>No events found. Try adjusting your search or filters.</p>
         </div>

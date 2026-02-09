@@ -1,18 +1,45 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useData } from '../context/DataContext';
+import { adminAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-  const { events, registrations, organizers, users } = useData();
+  const { events, registrations, users } = useData();
   const [timeRange, setTimeRange] = useState('week'); // week, month, all
+  const [systemStats, setSystemStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        const response = await adminAPI.getStats();
+        if (response.success) {
+          setSystemStats(response.data);
+        }
+      } catch (err) {
+        console.error('Error fetching system stats:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   // Calculate statistics
   const stats = useMemo(() => {
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    const roleCount = (role) => {
+      const fromApi = systemStats?.users?.byRole?.find(r => r._id === role)?.count;
+      if (typeof fromApi === 'number') return fromApi;
+      return users.filter(u => u.role === role).length;
+    };
 
     const filterByDate = (items, dateField) => {
       return {
@@ -22,24 +49,22 @@ const AdminDashboard = () => {
       };
     };
 
-    const totalUsers = users.length;
-    const participants = users.filter(u => u.role === 'Participant').length;
-    const organizersCount = users.filter(u => u.role === 'Organizer').length;
-    
-    const totalEvents = events.length;
-    const upcomingEvents = events.filter(e => new Date(e.date) > now).length;
-    const pastEvents = totalEvents - upcomingEvents;
+    const totalUsers = systemStats?.users?.total ?? users.length;
+    const participants = roleCount('Participant');
+    const organizersCount = roleCount('Organizer');
+
+    const totalEvents = systemStats?.events?.total ?? events.length;
+    const upcomingEvents = systemStats?.events?.upcoming ?? events.filter(e => new Date(e.date) > now).length;
+    const pastEvents = Math.max(0, totalEvents - upcomingEvents);
 
     const newEvents = filterByDate(events.filter(e => e.createdAt), 'createdAt');
     const newRegistrations = filterByDate(registrations.filter(r => r.registeredAt), 'registeredAt');
 
-    const pendingApprovals = registrations.filter(r => r.status === 'pending').length;
-    const totalRevenue = registrations
-      .filter(r => r.status === 'approved')
-      .reduce((sum, r) => {
-        const event = events.find(e => e.id === r.eventId);
-        return sum + (event?.registrationFee || 0);
-      }, 0);
+    const pendingApprovals = systemStats?.registrations?.byStatus?.find(s => s._id === 'pending')?.count
+      ?? registrations.filter(r => r.status === 'pending').length;
+
+    const totalRevenue = (systemStats?.payments ?? []).reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const totalRegistrations = systemStats?.registrations?.total ?? registrations.length;
 
     return {
       totalUsers,
@@ -52,15 +77,43 @@ const AdminDashboard = () => {
       newRegistrations,
       pendingApprovals,
       totalRevenue,
-      totalRegistrations: registrations.length
+      totalRegistrations
     };
-  }, [events, registrations, organizers, users]);
+  }, [events, registrations, users, systemStats]);
 
   // Recent activities
   const recentActivities = useMemo(() => {
+    if (systemStats?.recentActivity) {
+      const activities = [];
+      const recentEvents = systemStats.recentActivity.events || [];
+      const recentUsers = systemStats.recentActivity.users || [];
+
+      recentEvents.forEach(event => {
+        activities.push({
+          type: 'event',
+          message: `New event created: ${event.title}`,
+          date: event.createdAt || event.date,
+          organizer: event.organizer ? `${event.organizer.firstName || ''} ${event.organizer.lastName || ''}`.trim() : undefined,
+          status: event.status
+        });
+      });
+
+      recentUsers.forEach(user => {
+        activities.push({
+          type: 'user',
+          message: `New user: ${(user.firstName || '').trim()} ${(user.lastName || '').trim()} (${user.role})`,
+          date: user.createdAt,
+          status: user.role
+        });
+      });
+
+      return activities
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 10);
+    }
+
     const activities = [];
 
-    // Recent events
     events
       .filter(e => e.createdAt)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -74,7 +127,6 @@ const AdminDashboard = () => {
         });
       });
 
-    // Recent registrations
     registrations
       .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt))
       .slice(0, 5)
@@ -93,7 +145,7 @@ const AdminDashboard = () => {
     return activities
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 10);
-  }, [events, registrations]);
+  }, [events, registrations, systemStats]);
 
   // Popular events
   const popularEvents = useMemo(() => {
@@ -211,7 +263,7 @@ const AdminDashboard = () => {
               recentActivities.map((activity, index) => (
                 <div key={index} className="activity-item">
                   <div className={`activity-icon ${activity.type}`}>
-                    {activity.type === 'event' ? '📅' : '📝'}
+                    {activity.type === 'event' ? '📅' : activity.type === 'user' ? '👤' : '📝'}
                   </div>
                   <div className="activity-content">
                     <p>{activity.message}</p>
@@ -241,17 +293,17 @@ const AdminDashboard = () => {
           </div>
           <div className="popular-events">
             {popularEvents.map(event => (
-              <div key={event.id} className="popular-event-card">
+              <div key={event._id || event.id} className="popular-event-card">
                 <h4>{event.title}</h4>
                 <div className="event-stats">
-                  <span>{event.registered || 0} / {event.capacity || event.maxParticipants} registered</span>
+                  <span>{event.registered || event.registrationCount || event.registrations?.length || 0} / {event.capacity || event.maxParticipants || event.participantLimit || 0} registered</span>
                   <span className="event-date">{formatDate(event.date)}</span>
                 </div>
                 <div className="progress-bar">
                   <div
                     className="progress-fill"
                     style={{
-                      width: `${((event.registered || 0) / (event.capacity || event.maxParticipants || 1)) * 100}%`
+                      width: `${((event.registered || event.registrationCount || event.registrations?.length || 0) / (event.capacity || event.maxParticipants || event.participantLimit || 1)) * 100}%`
                     }}
                   />
                 </div>

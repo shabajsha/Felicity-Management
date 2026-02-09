@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
 import { useToast } from './Toast.jsx';
+import { feedbackAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers.js';
 import './FeedbackSystem.css';
 
@@ -13,11 +14,8 @@ function FeedbackSystem() {
   const { events, registrations } = useData();
   const { showSuccess, showError } = useToast();
 
-  const [feedbacks, setFeedbacks] = useState(() => {
-    const stored = localStorage.getItem('ems_feedbacks');
-    return stored ? JSON.parse(stored) : [];
-  });
-
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [newFeedback, setNewFeedback] = useState({
     rating: 5,
@@ -28,14 +26,33 @@ function FeedbackSystem() {
     anonymous: false
   });
 
+  useEffect(() => {
+    const fetchFeedback = async () => {
+      try {
+        setLoading(true);
+        const response = await feedbackAPI.getEventFeedback(eventId);
+        if (response.success) {
+          setFeedbacks(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching feedback:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFeedback();
+  }, [eventId]);
+
   const event = events.find(e => e.id === parseInt(eventId) || e.id === eventId.toString());
   const userRegistration = registrations.find(
     r => r.eventId === eventId && r.userId === user?.id
   );
 
   const eventFeedbacks = useMemo(() => {
-    return feedbacks.filter(f => f.eventId === eventId && !f.anonymous);
-  }, [feedbacks, eventId]);
+    // API already filters by eventId, filter out anonymous ones for display
+    return feedbacks.filter(f => !f.isAnonymous);
+  }, [feedbacks]);
 
   const categories = [
     'Overall Experience',
@@ -47,31 +64,28 @@ function FeedbackSystem() {
   ];
 
   const averageRating = useMemo(() => {
-    const allEventFeedbacks = feedbacks.filter(f => f.eventId === eventId);
-    if (allEventFeedbacks.length === 0) return 0;
-    const sum = allEventFeedbacks.reduce((acc, f) => acc + f.rating, 0);
-    return (sum / allEventFeedbacks.length).toFixed(1);
-  }, [feedbacks, eventId]);
+    if (feedbacks.length === 0) return 0;
+    const sum = feedbacks.reduce((acc, f) => acc + f.rating, 0);
+    return (sum / feedbacks.length).toFixed(1);
+  }, [feedbacks]);
 
   const ratingDistribution = useMemo(() => {
-    const allEventFeedbacks = feedbacks.filter(f => f.eventId === eventId);
     const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-    allEventFeedbacks.forEach(f => {
+    feedbacks.forEach(f => {
       distribution[f.rating]++;
     });
     return distribution;
-  }, [feedbacks, eventId]);
+  }, [feedbacks]);
 
   const totalFeedbacks = useMemo(() => {
-    return feedbacks.filter(f => f.eventId === eventId).length;
-  }, [feedbacks, eventId]);
+    return feedbacks.length;
+  }, [feedbacks]);
 
   const recommendationRate = useMemo(() => {
-    const allEventFeedbacks = feedbacks.filter(f => f.eventId === eventId);
-    if (allEventFeedbacks.length === 0) return 0;
-    const recommended = allEventFeedbacks.filter(f => f.wouldRecommend).length;
-    return ((recommended / allEventFeedbacks.length) * 100).toFixed(0);
-  }, [feedbacks, eventId]);
+    if (feedbacks.length === 0) return 0;
+    const recommended = feedbacks.filter(f => f.wouldRecommend).length;
+    return ((recommended / feedbacks.length) * 100).toFixed(0);
+  }, [feedbacks]);
 
   if (!event) {
     return (
@@ -90,14 +104,9 @@ function FeedbackSystem() {
     f => f.eventId === eventId && f.userId === user?.id
   );
 
-  const canSubmitFeedback = userRegistration && userRegistration.status === 'approved';
+  const canSubmitFeedback = userRegistration && userRegistration.status === 'confirmed';
 
-  const saveFeedbacks = (updatedFeedbacks) => {
-    setFeedbacks(updatedFeedbacks);
-    localStorage.setItem('ems_feedbacks', JSON.stringify(updatedFeedbacks));
-  };
-
-  const handleSubmitFeedback = () => {
+  const handleSubmitFeedback = async () => {
     if (!newFeedback.title.trim() || !newFeedback.comment.trim()) {
       showError('Please fill in all required fields');
       return;
@@ -108,6 +117,38 @@ function FeedbackSystem() {
       return;
     }
 
+    try {
+      const response = await feedbackAPI.submitFeedback(eventId, {
+        rating: newFeedback.rating,
+        category: newFeedback.category,
+        title: newFeedback.title,
+        comment: newFeedback.comment,
+        wouldRecommend: newFeedback.wouldRecommend,
+        anonymous: newFeedback.anonymous
+      });
+
+      if (response.success) {
+        setFeedbacks(prev => [response.feedback, ...prev]);
+        setNewFeedback({
+          rating: 5,
+          category: 'Overall Experience',
+          title: '',
+          comment: '',
+          wouldRecommend: true,
+          anonymous: false
+        });
+        setShowFeedbackForm(false);
+        showSuccess('Thank you for your feedback!');
+      } else {
+        showError(response.message || 'Failed to submit feedback');
+      }
+    } catch (err) {
+      console.error('Error submitting feedback:', err);
+      showError('Failed to submit feedback');
+    }
+  };
+
+  const handleSubmitFeedbackOld = () => {
     const feedback = {
       id: Date.now().toString(),
       eventId,

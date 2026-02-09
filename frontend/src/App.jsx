@@ -32,17 +32,17 @@ function App() {
   const { events, registerForEvent, deleteEvent, updateEvent, addEvent } = useData();
   const { showSuccess, showError } = useToast();
 
-  const handleRegister = (eventId) => {
+  const handleRegister = async (eventId) => {
     if (!user) {
       showError('Please login to register');
       return;
     }
-    
-    const result = registerForEvent(user.id, eventId);
-    if (result.success) {
+
+    const result = await registerForEvent(user.id, eventId);
+    if (result?.success) {
       showSuccess('Successfully registered for event!');
     } else {
-      showError(result.message);
+      showError(result?.message || 'Registration failed');
     }
   };
 

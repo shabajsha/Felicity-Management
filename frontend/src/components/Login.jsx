@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from './Toast.jsx';
 import { USER_ROLES, PARTICIPANT_TYPES } from '../utils/constants';
 import { isValidEmail, isIIITEmail } from '../utils/helpers';
-import { MOCK_USERS } from '../utils/mockData';
 import './Login.css';
 
 const ROLE_REDIRECT = {

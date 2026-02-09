@@ -6,7 +6,8 @@ const {
   deleteUser,
   promoteToOrganizer,
   getSystemStats,
-  getPendingEvents
+  getPendingEvents,
+  createOrganizer
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -22,6 +23,7 @@ router.get('/users/:id', getUser);
 router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.put('/users/:id/promote', promoteToOrganizer);
+router.post('/organizers', createOrganizer);
 
 // System statistics
 router.get('/stats', getSystemStats);

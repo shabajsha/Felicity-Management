@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
-import { formatDateShort, getEventAvailability, formatTime } from '../utils/helpers';
+import { formatDateShort, getEventAvailability, formatTime, getOrganizerName } from '../utils/helpers';
 import { EVENT_TYPES, USER_ROLES } from '../utils/constants';
 import './EventCard.css';
 
@@ -11,6 +11,7 @@ function EventCard({ event, onDelete, onRegister }) {
   const isFull = event.registered >= event.capacity;
   const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
   const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
+  const organizerDisplayName = getOrganizerName(event.organizer, event.organizerName);
 
   return (
     <div className="event-card">
@@ -30,7 +31,7 @@ function EventCard({ event, onDelete, onRegister }) {
 
       <div className="event-card-body">
         <h3 className="event-title">
-          <Link to={`/event/${event.id}`}>{event.title}</Link>
+          <Link to={`/event/${event._id || event.id}`}>{event.title}</Link>
         </h3>
         
         <div className="event-meta">
@@ -56,7 +57,7 @@ function EventCard({ event, onDelete, onRegister }) {
 
         <div className="event-organizer">
           <span className="icon">👤</span>
-          <span>{event.organizer}</span>
+          <span>{organizerDisplayName}</span>
         </div>
 
         <div className="progress-bar-container">
@@ -76,7 +77,7 @@ function EventCard({ event, onDelete, onRegister }) {
         {isParticipant && (
           <button 
             className="btn btn-primary"
-            onClick={() => onRegister(event.id)}
+            onClick={() => onRegister(event._id || event.id)}
             disabled={isFull}
           >
             {isFull ? '✓ Full' : '✓ Register'}
@@ -84,14 +85,14 @@ function EventCard({ event, onDelete, onRegister }) {
         )}
         {canManage && (
           <div className="action-buttons">
-            <Link to={`/organizer/events/edit/${event.id}`} className="btn btn-secondary">
+            <Link to={`/organizer/events/edit/${event._id || event.id}`} className="btn btn-secondary">
               ✏️ Edit
             </Link>
             <button 
               className="btn btn-danger"
               onClick={() => {
                 if (window.confirm('Are you sure you want to delete this event?')) {
-                  onDelete(event.id);
+                  onDelete(event._id || event.id);
                 }
               }}
             >

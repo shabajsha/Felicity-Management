@@ -38,12 +38,12 @@ export function AuthProvider({ children }) {
     try {
       const response = await authAPI.login(credentials);
       const userData = {
-        ...response.data,
+        ...response.user,
         token: response.token
       };
       setUser(userData);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-      return { success: true };
+      return { success: true, user: userData };
     } catch (error) {
       return { success: false, error: error.message };
     }
@@ -53,12 +53,12 @@ export function AuthProvider({ children }) {
     try {
       const response = await authAPI.register(userData);
       const user = {
-        ...response.data,
+        ...response.user,
         token: response.token
       };
       setUser(user);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      return { success: true };
+      return { success: true, user };
     } catch (error) {
       return { success: false, error: error.message };
     }

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from './Toast.jsx';
 import './ParticipantRegister.css';
 
 function ParticipantRegister() {
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const [participantType, setParticipantType] = useState('IIIT');
   const [firstName, setFirstName] = useState('');
@@ -29,7 +31,7 @@ function ParticipantRegister() {
     return '';
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const msg = validate();
     if (msg) {
@@ -37,9 +39,26 @@ function ParticipantRegister() {
       return;
     }
 
-    // Frontend-only placeholder: in real app, call backend signup endpoint
-    login({ role: 'Participant', participantType, email, firstName, lastName });
-    navigate('/', { replace: true });
+    // Call backend registration API
+    const userData = {
+      firstName,
+      lastName,
+      email,
+      password,
+      participantType,
+      college: participantType === 'IIIT' ? 'IIIT Hyderabad' : college,
+      contactNumber: contact
+    };
+
+    const result = await register(userData);
+    
+    if (result.success) {
+      showSuccess('Registration successful! Welcome to the Event Management System.');
+      navigate('/dashboard', { replace: true });
+    } else {
+      setError(result.error || 'Registration failed');
+      showError(result.error || 'Registration failed. Please try again.');
+    }
   };
 
   return (

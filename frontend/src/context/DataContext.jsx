@@ -2,25 +2,14 @@ import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { STORAGE_KEYS, EVENT_STATUS, REGISTRATION_STATUS } from '../utils/constants';
 import { MOCK_EVENTS, MOCK_ORGANIZERS, MOCK_USERS, generateMockEvents } from '../utils/mockData';
 import { generateId, generateTicketId } from '../utils/helpers';
+import { eventsAPI, registrationsAPI, clubsAPI } from '../utils/api';
 
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  // Initialize events from localStorage or use mock data
-  const [events, setEvents] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (err) {
-        console.error('Error parsing events from localStorage:', err);
-      }
-    }
-    return generateMockEvents(15); // Generate 15 additional mock events
-  });
-
+  // Initialize events from API instead of localStorage
+  const [events, setEvents] = useState([]);
   const [organizers, setOrganizers] = useState(MOCK_ORGANIZERS);
-
   const [users, setUsers] = useState(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
     if (saved) {
@@ -32,140 +21,166 @@ export function DataProvider({ children }) {
     }
     return MOCK_USERS;
   });
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const [registrations, setRegistrations] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.REGISTRATIONS);
-    if (saved) {
+  // Fetch events from backend on mount
+  useEffect(() => {
+    const fetchEvents = async () => {
       try {
-        return JSON.parse(saved);
+        const response = await eventsAPI.getAllEvents();
+        if (response.success) {
+          const normalized = (response.data || []).map(evt => ({
+            ...evt,
+            id: evt._id || evt.id
+          }));
+          setEvents(normalized);
+        }
       } catch (err) {
-        console.error('Error parsing registrations from localStorage:', err);
+        console.error('Error fetching events:', err);
+      } finally {
+        setLoading(false);
       }
-    }
-    return [];
-  });
+    };
 
-  // Persist to localStorage
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
-  }, [events]);
+    fetchEvents();
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.REGISTRATIONS, JSON.stringify(registrations));
-  }, [registrations]);
-
+  // Persist to localStorage (only for users, events managed by API)
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
   }, [users]);
 
-  // Event Management
-  const addEvent = (eventData) => {
-    const newEvent = {
-      ...eventData,
-      id: generateId(),
-      registered: 0,
-      capacity: eventData.maxParticipants || eventData.capacity || 50,
-      status: EVENT_STATUS.PUBLISHED,
-      createdAt: new Date().toISOString(),
-    };
-    setEvents(prev => [...prev, newEvent]);
-    return newEvent.id;
+  // Event Management - Now using API
+  const addEvent = async (eventData) => {
+    try {
+      const response = await eventsAPI.createEvent(eventData);
+      if (response.success) {
+        const newEvent = {
+          ...response.data,
+          id: response.data._id || response.data.id
+        };
+        setEvents(prev => [...prev, newEvent]);
+        return newEvent._id || newEvent.id;
+      }
+    } catch (err) {
+      console.error('Error creating event:', err);
+    }
+    return null;
   };
 
-  const updateEvent = (id, updates) => {
-    setEvents(prev =>
-      prev.map(event => (event.id === id ? { ...event, ...updates } : event))
-    );
+  const updateEvent = async (id, updates) => {
+    try {
+      const response = await eventsAPI.updateEvent(id, updates);
+      if (response.success) {
+        setEvents(prev =>
+          prev.map(event => 
+            (event._id === id || event.id === id) 
+              ? { ...event, ...response.data, id: response.data._id || response.data.id || event.id } 
+              : event
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Error updating event:', err);
+    }
   };
 
-  const deleteEvent = (id) => {
-    setEvents(prev => prev.filter(event => event.id !== id));
-    // Also remove related registrations
-    setRegistrations(prev => prev.filter(reg => reg.eventId !== id));
+  const deleteEvent = async (id) => {
+    try {
+      const response = await eventsAPI.deleteEvent(id);
+      if (response.success) {
+        setEvents(prev => prev.filter(event => event._id !== id && event.id !== id));
+        setRegistrations(prev => prev.filter(reg => reg.eventId !== id));
+      }
+    } catch (err) {
+      console.error('Error deleting event:', err);
+    }
   };
 
   const getEventById = (id) => {
-    return events.find(event => event.id === id || event.id === parseInt(id));
-  };
-
-  // Registration Management
-  const registerForEvent = (userId, eventId, formData = {}) => {
-    const event = getEventById(eventId);
-    if (!event) return { success: false, message: 'Event not found' };
-
-    if (event.registered >= event.capacity) {
-      return { success: false, message: 'Event is full' };
-    }
-
-    // Check if already registered
-    const existing = registrations.find(
-      r => r.userId === userId && r.eventId === eventId
+    return events.find(event => 
+      event._id === id || event.id === id || 
+      event._id === parseInt(id) || event.id === parseInt(id)
     );
-    if (existing) {
-      return { success: false, message: 'Already registered for this event' };
+  };
+
+  // Registration Management - Now using API
+  const registerForEvent = async (userId, eventId, formData = {}) => {
+    try {
+      const response = await registrationsAPI.registerForEvent(eventId, formData);
+      if (response.success) {
+        const registration = response.data;
+        setRegistrations(prev => [...prev, registration]);
+        
+        // Update event registered count locally
+        setEvents(prev => prev.map(event => {
+          if (event._id === eventId || event.id === eventId) {
+            return { ...event, registered: (event.registered || 0) + 1 };
+          }
+          return event;
+        }));
+        
+        return { success: true, registration };
+      } else {
+        return { success: false, message: response.message };
+      }
+    } catch (err) {
+      console.error('Error registering for event:', err);
+      return { success: false, message: 'Failed to register for event' };
     }
-
-    // Get user information
-    const user = getUserById(userId);
-    const userName = user?.name || (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : 'Unknown');
-    const userPhone = user?.phone || user?.phoneNumber || user?.contactNumber || '';
-
-    const newRegistration = {
-      id: generateId(),
-      userId,
-      eventId,
-      participantName: userName,
-      email: user?.email || '',
-      phone: userPhone,
-      ticketId: generateTicketId(),
-      registeredAt: new Date().toISOString(),
-      registrationDate: new Date().toISOString(),
-      status: event.requiresApproval ? 'pending' : REGISTRATION_STATUS.CONFIRMED,
-      paymentStatus: event.registrationFee > 0 ? 'Paid' : 'Free',
-      amount: event.registrationFee || 0,
-      customFormData: formData,
-    };
-
-    setRegistrations(prev => [...prev, newRegistration]);
-    
-    // Increment event registered count
-    updateEvent(eventId, { registered: event.registered + 1 });
-
-    return { success: true, registration: newRegistration };
   };
 
-  const cancelRegistration = (registrationId) => {
-    const registration = registrations.find(r => r.id === registrationId);
-    if (!registration) return { success: false, message: 'Registration not found' };
-
-    setRegistrations(prev =>
-      prev.map(reg =>
-        reg.id === registrationId
-          ? { ...reg, status: REGISTRATION_STATUS.CANCELLED }
-          : reg
-      )
-    );
-
-    // Decrement event registered count
-    const event = getEventById(registration.eventId);
-    if (event && event.registered > 0) {
-      updateEvent(registration.eventId, { registered: event.registered - 1 });
+  const cancelRegistration = async (registrationId) => {
+    try {
+      const response = await registrationsAPI.cancelRegistration(registrationId);
+      if (response.success) {
+        setRegistrations(prev =>
+          prev.map(reg =>
+            reg._id === registrationId || reg.id === registrationId
+              ? { ...reg, status: REGISTRATION_STATUS.CANCELLED }
+              : reg
+          )
+        );
+        return { success: true };
+      }
+    } catch (err) {
+      console.error('Error cancelling registration:', err);
+      return { success: false, message: 'Failed to cancel registration' };
     }
-
-    return { success: true };
   };
 
-  const getUserRegistrations = (userId) => {
-    return registrations.filter(reg => reg.userId === userId);
+  const getUserRegistrations = async (userId) => {
+    try {
+      const response = await registrationsAPI.getUserRegistrations();
+      if (response.success) {
+        return response.data || [];
+      }
+    } catch (err) {
+      console.error('Error fetching user registrations:', err);
+    }
+    return [];
   };
 
-  const getEventRegistrations = (eventId) => {
-    return registrations.filter(reg => reg.eventId === eventId);
+  const getEventRegistrations = async (eventId) => {
+    try {
+      const response = await registrationsAPI.getEventRegistrations(eventId);
+      if (response.success) {
+        return response.data || [];
+      }
+    } catch (err) {
+      console.error('Error fetching event registrations:', err);
+    }
+    return [];
   };
 
   const updateRegistration = (id, updates) => {
     setRegistrations(prev =>
-      prev.map(reg => (reg.id === id || reg.id === parseInt(id) ? { ...reg, ...updates } : reg))
+      prev.map(reg => 
+        (reg._id === id || reg.id === id || reg._id === parseInt(id) || reg.id === parseInt(id)) 
+          ? { ...reg, ...updates } 
+          : reg
+      )
     );
   };
 
@@ -228,6 +243,7 @@ export function DataProvider({ children }) {
       organizers,
       users,
       registrations,
+      loading,
       addEvent,
       updateEvent,
       deleteEvent,
@@ -246,7 +262,7 @@ export function DataProvider({ children }) {
       deleteUser,
       getUserById,
     }),
-    [events, organizers, users, registrations]
+    [events, organizers, users, registrations, loading]
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

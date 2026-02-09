@@ -19,7 +19,7 @@ exports.registerForEvent = async (req, res, next) => {
     }
 
     // Check if event is approved
-    if (event.status !== 'Approved') {
+    if (event.status !== 'approved') {
       return res.status(400).json({
         success: false,
         message: 'Cannot register for unapproved event'
@@ -38,7 +38,7 @@ exports.registerForEvent = async (req, res, next) => {
     const existingRegistration = await Registration.findOne({
       event: eventId,
       user: req.user.id,
-      status: { $ne: 'Cancelled' }
+      status: { $ne: 'rejected' }
     });
 
     if (existingRegistration) {
@@ -51,10 +51,10 @@ exports.registerForEvent = async (req, res, next) => {
     // Check capacity
     const registrationCount = await Registration.countDocuments({
       event: eventId,
-      status: { $in: ['Pending', 'Confirmed'] }
+      status: { $in: ['pending', 'confirmed'] }
     });
 
-    if (registrationCount >= event.maxCapacity) {
+    if (registrationCount >= (event.capacity || event.maxParticipants)) {
       return res.status(400).json({
         success: false,
         message: 'Event is full'
@@ -62,7 +62,7 @@ exports.registerForEvent = async (req, res, next) => {
     }
 
     // Team validation
-    if (event.requiresTeam) {
+    if (event.allowTeams) {
       if (!teamName || !teamMembers || teamMembers.length < event.minTeamSize - 1) {
         return res.status(400).json({
           success: false,
@@ -87,12 +87,15 @@ exports.registerForEvent = async (req, res, next) => {
     const registration = await Registration.create({
       event: eventId,
       user: req.user.id,
+      participantName: `${req.user.firstName} ${req.user.lastName}`.trim(),
+      email: req.user.email,
+      isTeam: !!event.allowTeams,
       teamName,
       teamMembers,
-      customFields,
-      amountPaid: event.fees,
-      paymentStatus: event.fees > 0 ? 'Pending' : 'Not Required',
-      status: event.fees > 0 ? 'Pending' : 'Confirmed'
+      customFieldResponses: customFields,
+      paymentAmount: event.registrationFee || 0,
+      paymentStatus: (event.registrationFee || 0) > 0 ? 'pending' : 'free',
+      status: (event.registrationFee || 0) > 0 ? 'pending' : 'confirmed'
     });
 
     await registration.populate('event', 'title date venue');
@@ -188,15 +191,14 @@ exports.getEventRegistrations = async (req, res, next) => {
       .populate('user', 'firstName lastName email contactNumber participantType')
       .sort('-createdAt');
 
-    // Calculate statistics
     const stats = {
       total: registrations.length,
-      confirmed: registrations.filter(r => r.status === 'Confirmed').length,
-      pending: registrations.filter(r => r.status === 'Pending').length,
-      cancelled: registrations.filter(r => r.status === 'Cancelled').length,
-      checkedIn: registrations.filter(r => r.checkIn.status).length,
-      paymentPending: registrations.filter(r => r.paymentStatus === 'Pending').length,
-      paymentCompleted: registrations.filter(r => r.paymentStatus === 'Completed').length
+      confirmed: registrations.filter(r => r.status === 'confirmed').length,
+      pending: registrations.filter(r => r.status === 'pending').length,
+      cancelled: registrations.filter(r => r.status === 'rejected').length,
+      checkedIn: registrations.filter(r => r.checkedIn).length,
+      paymentPending: registrations.filter(r => r.paymentStatus === 'pending').length,
+      paymentCompleted: registrations.filter(r => r.paymentStatus === 'paid').length
     };
 
     res.status(200).json({
@@ -233,7 +235,7 @@ exports.cancelRegistration = async (req, res, next) => {
     }
 
     // Check if already cancelled
-    if (registration.status === 'Cancelled') {
+    if (registration.status === 'rejected') {
       return res.status(400).json({
         success: false,
         message: 'Registration already cancelled'
@@ -249,7 +251,7 @@ exports.cancelRegistration = async (req, res, next) => {
       });
     }
 
-    registration.status = 'Cancelled';
+    registration.status = 'rejected';
     await registration.save();
 
     res.status(200).json({
@@ -266,9 +268,9 @@ exports.cancelRegistration = async (req, res, next) => {
 // @access  Private (Organizer/Admin)
 exports.updatePaymentStatus = async (req, res, next) => {
   try {
-    const { paymentStatus, paymentMethod, transactionId } = req.body;
+    const { paymentStatus, paymentMethod, transactionId, amountPaid } = req.body;
 
-    if (!['Pending', 'Completed', 'Failed', 'Refunded'].includes(paymentStatus)) {
+    if (!['pending', 'paid', 'failed', 'refunded'].includes(paymentStatus)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid payment status'
@@ -299,10 +301,15 @@ exports.updatePaymentStatus = async (req, res, next) => {
     
     if (paymentMethod) registration.paymentMethod = paymentMethod;
     if (transactionId) registration.transactionId = transactionId;
+    if (amountPaid !== undefined) registration.amountPaid = amountPaid;
 
     // Update registration status if payment completed
-    if (paymentStatus === 'Completed' && registration.status === 'Pending') {
-      registration.status = 'Confirmed';
+    if (paymentStatus === 'paid' && registration.status === 'pending') {
+      registration.status = 'confirmed';
+      // Default amountPaid to expected paymentAmount when not provided
+      if (registration.amountPaid === 0) {
+        registration.amountPaid = registration.paymentAmount || 0;
+      }
     }
 
     await registration.save();
@@ -342,7 +349,7 @@ exports.checkInParticipant = async (req, res, next) => {
     }
 
     // Check if registration is confirmed
-    if (registration.status !== 'Confirmed') {
+    if (registration.status !== 'confirmed') {
       return res.status(400).json({
         success: false,
         message: 'Can only check-in confirmed registrations'
@@ -350,16 +357,16 @@ exports.checkInParticipant = async (req, res, next) => {
     }
 
     // Check if already checked in
-    if (registration.checkIn.status) {
+    if (registration.checkedIn) {
       return res.status(400).json({
         success: false,
         message: 'Participant already checked in',
-        checkInTime: registration.checkIn.timestamp
+        checkInTime: registration.checkInTime
       });
     }
 
-    registration.checkIn.status = true;
-    registration.checkIn.timestamp = new Date();
+    registration.checkedIn = true;
+    registration.checkInTime = new Date();
     await registration.save();
 
     res.status(200).json({
@@ -378,10 +385,10 @@ exports.checkInParticipant = async (req, res, next) => {
 exports.getRegistrationStats = async (req, res, next) => {
   try {
     const totalRegistrations = await Registration.countDocuments();
-    const confirmedRegistrations = await Registration.countDocuments({ status: 'Confirmed' });
-    const pendingRegistrations = await Registration.countDocuments({ status: 'Pending' });
-    const cancelledRegistrations = await Registration.countDocuments({ status: 'Cancelled' });
-    const checkedInRegistrations = await Registration.countDocuments({ 'checkIn.status': true });
+    const confirmedRegistrations = await Registration.countDocuments({ status: 'confirmed' });
+    const pendingRegistrations = await Registration.countDocuments({ status: 'pending' });
+    const cancelledRegistrations = await Registration.countDocuments({ status: 'rejected' });
+    const checkedInRegistrations = await Registration.countDocuments({ checkedIn: true });
 
     const paymentStats = await Registration.aggregate([
       {
@@ -403,6 +410,79 @@ exports.getRegistrationStats = async (req, res, next) => {
         checkedIn: checkedInRegistrations,
         payments: paymentStats
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get all registrations for organizer's events
+// @route   GET /api/registrations/organizer/my-registrations
+// @access  Private (Organizer)
+exports.getOrganizerRegistrations = async (req, res, next) => {
+  try {
+    // Fetch events owned by organizer
+    const events = await Event.find({ organizer: req.user.id }).select('_id title');
+    const eventIds = events.map(e => e._id);
+
+    const regs = await Registration.find({ event: { $in: eventIds } })
+      .populate('user', 'firstName lastName email contactNumber')
+      .populate('event', 'title date venue');
+
+    res.status(200).json({
+      success: true,
+      count: regs.length,
+      data: regs
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update registration status
+// @route   PUT /api/registrations/:id/status
+// @access  Private (Owner or Organizer/Admin)
+exports.updateRegistrationStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const allowed = ['pending', 'confirmed', 'rejected', 'approved'];
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status'
+      });
+    }
+
+    const registration = await Registration.findById(req.params.id);
+
+    if (!registration) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found'
+      });
+    }
+
+    const event = await Event.findById(registration.event);
+
+    // Check authorization
+    if (
+      registration.user.toString() !== req.user.id &&
+      event?.organizer?.toString() !== req.user.id &&
+      req.user.role !== 'Admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to update this registration'
+      });
+    }
+
+    registration.status = status;
+    await registration.save();
+
+    res.status(200).json({
+      success: true,
+      data: registration
     });
   } catch (error) {
     next(error);

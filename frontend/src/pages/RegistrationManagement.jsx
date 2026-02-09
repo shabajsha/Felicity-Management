@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
+import { registrationsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers';
 import './RegistrationManagement.css';
 
@@ -10,44 +11,68 @@ const RegistrationManagement = () => {
   const { eventId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { events, registrations, updateRegistration, users, organizers } = useData();
-  const { showSuccess } = useToast();
+  const { events } = useData();
+  const { showSuccess, showError } = useToast();
 
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedEventFilter, setSelectedEventFilter] = useState('all');
 
+  useEffect(() => {
+    const fetchRegistrations = async () => {
+      try {
+        setLoading(true);
+        const response = eventId
+          ? await registrationsAPI.getEventRegistrations(eventId)
+          : await registrationsAPI.getOrganizerRegistrations();
+
+        if (response.success) {
+          const data = response.data || response.registrations || [];
+          setRegistrations(data);
+        } else {
+          showError(response.message || 'Failed to load registrations');
+        }
+      } catch (err) {
+        console.error('Error fetching registrations:', err);
+        showError('Failed to load registrations');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRegistrations();
+  }, [eventId]);
+
   // Get organizer's events
   const organizerEvents = useMemo(() => {
-    if (!user?.organizerId) return [];
-    return events.filter(e => e.organizerId === user.organizerId);
+    if (!user?._id && !user?.id) return [];
+    return events.filter(e => {
+      const organizerId = e.organizer?._id || e.organizer || e.organizerId;
+      return organizerId === user._id || organizerId === user.id;
+    });
   }, [events, user]);
 
-  const event = eventId ? events.find(e => e.id == eventId || e.id === parseInt(eventId)) : null;
+  const event = eventId ? events.find(e => e.id == eventId || e._id == eventId) : null;
 
   const eventRegistrations = useMemo(() => {
-    if (eventId) {
-      // Show registrations for specific event
-      return registrations
-        .filter(reg => reg.eventId == eventId || reg.eventId === parseInt(eventId))
-        .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
-    } else {
-      // Show all registrations for organizer's events
-      const organizerEventIds = organizerEvents.map(e => e.id);
-      return registrations
-        .filter(reg => organizerEventIds.includes(reg.eventId))
-        .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
-    }
-  }, [registrations, eventId, organizerEvents]);
+    return registrations
+      .slice()
+      .sort((a, b) => new Date(b.registeredAt || b.createdAt) - new Date(a.registeredAt || a.createdAt));
+  }, [registrations]);
 
   const filteredRegistrations = useMemo(() => {
     let filtered = eventRegistrations;
 
     // Filter by event when showing all registrations
     if (!eventId && selectedEventFilter !== 'all') {
-      filtered = filtered.filter(reg => reg.eventId == selectedEventFilter);
+      filtered = filtered.filter(reg => {
+        const regEventId = reg.event?._id || reg.eventId || reg.event;
+        return regEventId == selectedEventFilter;
+      });
     }
 
     if (filterStatus !== 'all') {
@@ -68,20 +93,46 @@ const RegistrationManagement = () => {
   const stats = useMemo(() => {
     const total = eventRegistrations.length;
     const pending = eventRegistrations.filter(r => r.status === 'pending').length;
-    const approved = eventRegistrations.filter(r => r.status === 'approved').length;
+    const confirmed = eventRegistrations.filter(r => r.status === 'confirmed' || r.status === 'approved').length;
     const rejected = eventRegistrations.filter(r => r.status === 'rejected').length;
 
-    return { total, pending, approved, rejected };
+    return { total, pending, confirmed, rejected };
   }, [eventRegistrations]);
 
-  const handleApprove = (registrationId) => {
-    updateRegistration(registrationId, { status: 'approved' });
-    showSuccess('Registration approved successfully');
+  const handleApprove = async (registrationId) => {
+    try {
+      const response = await registrationsAPI.updateRegistrationStatus(registrationId, 'confirmed');
+      if (response.success) {
+        const updated = response.data || response.registration;
+        setRegistrations(prev =>
+          prev.map(reg => (reg._id === registrationId || reg.id === registrationId ? updated : reg))
+        );
+        showSuccess('Registration confirmed successfully');
+      } else {
+        showError(response.message || 'Failed to confirm registration');
+      }
+    } catch (err) {
+      console.error('Error confirming registration:', err);
+      showError('Failed to confirm registration');
+    }
   };
 
-  const handleReject = (registrationId) => {
-    updateRegistration(registrationId, { status: 'rejected' });
-    showSuccess('Registration rejected');
+  const handleReject = async (registrationId) => {
+    try {
+      const response = await registrationsAPI.updateRegistrationStatus(registrationId, 'rejected');
+      if (response.success) {
+        const updated = response.data || response.registration;
+        setRegistrations(prev =>
+          prev.map(reg => (reg._id === registrationId || reg.id === registrationId ? updated : reg))
+        );
+        showSuccess('Registration rejected');
+      } else {
+        showError(response.message || 'Failed to reject registration');
+      }
+    } catch (err) {
+      console.error('Error rejecting registration:', err);
+      showError('Failed to reject registration');
+    }
   };
 
   const handleViewDetails = (registration) => {
@@ -91,13 +142,14 @@ const RegistrationManagement = () => {
 
   const handleExport = () => {
     const csvContent = [
-      ['Name', 'Email', 'Phone', 'Status', 'Registered At', 'Custom Fields'].join(','),
+      ['Name', 'Email', 'Phone', 'Status', 'Registered At', 'Event', 'Custom Fields'].join(','),
       ...filteredRegistrations.map(reg => [
         reg.participantName,
         reg.email,
         reg.phone || '',
         reg.status,
-        new Date(reg.registeredAt).toLocaleString(),
+        new Date(reg.registeredAt || reg.createdAt).toLocaleString(),
+        reg.event?.title || '',
         JSON.stringify(reg.customFieldResponses || {})
       ].join(','))
     ].join('\n');
@@ -159,9 +211,9 @@ const RegistrationManagement = () => {
           <h3>{stats.pending}</h3>
           <p>Pending Approval</p>
         </div>
-        <div className="stat-card approved">
-          <h3>{stats.approved}</h3>
-          <p>Approved</p>
+        <div className="stat-card confirmed">
+          <h3>{stats.confirmed}</h3>
+          <p>Confirmed</p>
         </div>
         <div className="stat-card rejected">
           <h3>{stats.rejected}</h3>
@@ -204,10 +256,10 @@ const RegistrationManagement = () => {
             Pending ({stats.pending})
           </button>
           <button
-            className={`filter-btn ${filterStatus === 'approved' ? 'active' : ''}`}
-            onClick={() => setFilterStatus('approved')}
+            className={`filter-btn ${filterStatus === 'confirmed' ? 'active' : ''}`}
+            onClick={() => setFilterStatus('confirmed')}
           >
-            Approved ({stats.approved})
+            Confirmed ({stats.confirmed})
           </button>
           <button
             className={`filter-btn ${filterStatus === 'rejected' ? 'active' : ''}`}
@@ -235,9 +287,9 @@ const RegistrationManagement = () => {
             </thead>
             <tbody>
               {filteredRegistrations.map(registration => {
-                const regEvent = events.find(e => e.id === registration.eventId);
+                const regEvent = registration.event || events.find(e => e.id === registration.eventId || e.id === registration.event);
                 return (
-                  <tr key={registration.id}>
+                  <tr key={registration._id || registration.id}>
                     <td>
                       <div className="participant-info">
                         <strong>{registration.participantName}</strong>
@@ -249,7 +301,7 @@ const RegistrationManagement = () => {
                     {!eventId && <td>{regEvent?.title || 'Unknown Event'}</td>}
                     <td>{registration.email}</td>
                     <td>{registration.phone || '-'}</td>
-                  <td>{formatDate(registration.registeredAt)}</td>
+                  <td>{formatDate(registration.registeredAt || registration.createdAt)}</td>
                   <td>
                     <span className={`status-badge ${registration.status}`}>
                       {registration.status}
@@ -267,14 +319,14 @@ const RegistrationManagement = () => {
                       {registration.status === 'pending' && (
                         <>
                           <button
-                            onClick={() => handleApprove(registration.id)}
+                            onClick={() => handleApprove(registration._id || registration.id)}
                             className="btn-approve"
                             title="Approve"
                           >
                             ✓
                           </button>
                           <button
-                            onClick={() => handleReject(registration.id)}
+                            onClick={() => handleReject(registration._id || registration.id)}
                             className="btn-reject"
                             title="Reject"
                           >
