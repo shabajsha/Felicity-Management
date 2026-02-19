@@ -15,7 +15,10 @@ const EventFormBuilder = () => {
   const { showSuccess, showError } = useToast();
 
   const isEditMode = !!id;
-  const existingEvent = isEditMode ? events.find(e => (e._id || e.id) === id) : null;
+  const contextEvent = isEditMode ? events.find(e => (e._id || e.id) === id) : null;
+  const [fetchedEvent, setFetchedEvent] = useState(null);
+  const existingEvent = contextEvent || fetchedEvent;
+  const customFieldsLocked = Boolean(isEditMode && existingEvent?.registered > 0);
 
   const [eventData, setEventData] = useState({
     title: '',
@@ -60,6 +63,24 @@ const EventFormBuilder = () => {
   });
   const [tagInput, setTagInput] = useState('');
   const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    const fetchEditEvent = async () => {
+      if (!isEditMode || contextEvent) return;
+
+      try {
+        const response = await eventsAPI.getEventById(id);
+        if (response.success) {
+          setFetchedEvent(response.data || null);
+        }
+      } catch (err) {
+        console.error('Error loading event for edit:', err);
+        showError('Unable to load event details for editing');
+      }
+    };
+
+    fetchEditEvent();
+  }, [isEditMode, id, contextEvent, showError]);
 
   useEffect(() => {
     if (isEditMode && existingEvent) {
@@ -194,6 +215,19 @@ const EventFormBuilder = () => {
     setCustomFields(prev => prev.filter(f => f.id !== fieldId));
   };
 
+  const handleMoveCustomField = (index, direction) => {
+    setCustomFields(prev => {
+      const next = [...prev];
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= next.length) {
+        return prev;
+      }
+      const [moved] = next.splice(index, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
   const handleOptionChange = (index, value) => {
     const newOptions = [...newField.options];
     newOptions[index] = value;
@@ -313,7 +347,17 @@ const EventFormBuilder = () => {
 
     try {
       if (isEditMode) {
-        await updateEvent(id, eventPayload);
+        const lifecycle = (existingEvent?.lifecycleStatus || '').toLowerCase();
+        const payloadToUpdate = lifecycle === 'published'
+          ? {
+              description: eventPayload.description,
+              registrationDeadline: eventPayload.registrationDeadline,
+              capacity: eventPayload.capacity,
+              maxParticipants: eventPayload.maxParticipants
+            }
+          : eventPayload;
+
+        await updateEvent(id, payloadToUpdate);
         if (publishNow) {
           await eventsAPI.publish(id);
         }
@@ -333,9 +377,25 @@ const EventFormBuilder = () => {
       }
     } catch (err) {
       console.error('Error creating event', err);
-      showError('Failed to save event');
+      showError(err?.message || 'Failed to save event');
     }
   };
+
+  if (isEditMode && !existingEvent) {
+    return (
+      <div className="event-form-builder">
+        <div className="form-header">
+          <h1>Edit Event</h1>
+          <button type="button" onClick={() => navigate(-1)} className="btn-secondary">
+            Cancel
+          </button>
+        </div>
+        <div className="form-section">
+          <p>Loading event details...</p>
+        </div>
+      </div>
+    );
+  }
 
   const renderFieldPreview = (field) => {
     switch (field.type) {
@@ -862,6 +922,11 @@ const EventFormBuilder = () => {
           <p className="section-description">
             Add custom fields to collect additional information during registration
           </p>
+          {customFieldsLocked && (
+            <div className="alert alert-info">
+              Registration has started. Custom fields are locked for this event.
+            </div>
+          )}
 
           <div className="custom-field-builder">
             <div className="form-row">
@@ -872,6 +937,7 @@ const EventFormBuilder = () => {
                   value={newField.label}
                   onChange={(e) => handleFieldChange('label', e.target.value)}
                   placeholder="e.g., T-Shirt Size"
+                  disabled={customFieldsLocked}
                 />
               </div>
 
@@ -880,6 +946,7 @@ const EventFormBuilder = () => {
                 <select
                   value={newField.type}
                   onChange={(e) => handleFieldChange('type', e.target.value)}
+                  disabled={customFieldsLocked}
                 >
                   <option value="text">Text</option>
                   <option value="textarea">Text Area</option>
@@ -900,6 +967,7 @@ const EventFormBuilder = () => {
                     type="checkbox"
                     checked={newField.required}
                     onChange={(e) => handleFieldChange('required', e.target.checked)}
+                    disabled={customFieldsLocked}
                   />
                   Required
                 </label>
@@ -916,23 +984,25 @@ const EventFormBuilder = () => {
                       value={option}
                       onChange={(e) => handleOptionChange(index, e.target.value)}
                       placeholder={`Option ${index + 1}`}
+                      disabled={customFieldsLocked}
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveOption(index)}
                       className="btn-remove"
+                      disabled={customFieldsLocked}
                     >
                       ×
                     </button>
                   </div>
                 ))}
-                <button type="button" onClick={handleAddOption} className="btn-secondary-small">
+                <button type="button" onClick={handleAddOption} className="btn-secondary-small" disabled={customFieldsLocked}>
                   + Add Option
                 </button>
               </div>
             )}
 
-            <button type="button" onClick={handleAddCustomField} className="btn-primary">
+            <button type="button" onClick={handleAddCustomField} className="btn-primary" disabled={customFieldsLocked}>
               Add Field
             </button>
           </div>
@@ -940,20 +1010,39 @@ const EventFormBuilder = () => {
           {customFields.length > 0 && (
             <div className="custom-fields-preview">
               <h3>Custom Fields Preview</h3>
-              {customFields.map(field => (
+              {customFields.map((field, index) => (
                 <div key={field.id} className="field-preview">
                   <div className="field-preview-header">
                     <label>
                       {field.label}
                       {field.required && <span className="required">*</span>}
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveCustomField(field.id)}
-                      className="btn-remove"
-                    >
-                      Remove
-                    </button>
+                    <div className="field-actions">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCustomField(index, -1)}
+                        className="btn-secondary-small"
+                        disabled={customFieldsLocked || index === 0}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCustomField(index, 1)}
+                        className="btn-secondary-small"
+                        disabled={customFieldsLocked || index === customFields.length - 1}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveCustomField(field.id)}
+                        className="btn-remove"
+                        disabled={customFieldsLocked}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                   {renderFieldPreview(field)}
                 </div>

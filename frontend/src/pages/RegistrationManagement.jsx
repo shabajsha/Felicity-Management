@@ -4,7 +4,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { registrationsAPI } from '../utils/api';
-import { formatDate } from '../utils/helpers';
+import { formatDate, formatTime } from '../utils/helpers';
 import './RegistrationManagement.css';
 
 const RegistrationManagement = () => {
@@ -17,6 +17,8 @@ const RegistrationManagement = () => {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPayment, setFilterPayment] = useState('all');
+  const [filterAttendance, setFilterAttendance] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRegistration, setSelectedRegistration] = useState(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -79,6 +81,14 @@ const RegistrationManagement = () => {
       filtered = filtered.filter(reg => reg.status === filterStatus);
     }
 
+    if (filterPayment !== 'all') {
+      filtered = filtered.filter(reg => reg.paymentStatus === filterPayment);
+    }
+
+    if (filterAttendance !== 'all') {
+      filtered = filtered.filter(reg => (filterAttendance === 'checked-in' ? reg.checkedIn : !reg.checkedIn));
+    }
+
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
       filtered = filtered.filter(reg =>
@@ -88,7 +98,7 @@ const RegistrationManagement = () => {
     }
 
     return filtered;
-  }, [eventRegistrations, filterStatus, searchTerm, selectedEventFilter, eventId]);
+  }, [eventRegistrations, filterStatus, filterPayment, filterAttendance, searchTerm, selectedEventFilter, eventId]);
 
   const stats = useMemo(() => {
     const total = eventRegistrations.length;
@@ -98,6 +108,47 @@ const RegistrationManagement = () => {
 
     return { total, pending, confirmed, rejected };
   }, [eventRegistrations]);
+
+  const analytics = useMemo(() => {
+    if (!eventId) return null;
+    const total = eventRegistrations.length;
+    const sales = eventRegistrations.filter(r => ['paid', 'free'].includes(r.paymentStatus)).length;
+    const revenue = eventRegistrations.reduce((sum, reg) => sum + (reg.amountPaid || 0), 0);
+    const attendance = eventRegistrations.filter(reg => reg.checkedIn).length;
+    const teamRegistrations = eventRegistrations.filter(reg => reg.isTeam);
+    const minTeamSize = event?.minTeamSize || 0;
+    const completedTeams = teamRegistrations.filter(reg => (reg.teamMembers?.length || 0) + 1 >= minTeamSize);
+
+    return {
+      total,
+      sales,
+      revenue,
+      attendance,
+      teamCompletion: teamRegistrations.length > 0
+        ? Math.round((completedTeams.length / teamRegistrations.length) * 100)
+        : 0
+    };
+  }, [eventId, eventRegistrations, event]);
+
+  const eventOverview = useMemo(() => {
+    if (!eventId || !event) return null;
+    const statusLabel = event.lifecycleStatus || event.status || 'published';
+    const priceValue = event.registrationFee || 0;
+    const priceLabel = priceValue > 0 ? `₹${priceValue}` : 'Free';
+    const startDate = formatDate(event.date);
+    const endDate = event.endDate ? formatDate(event.endDate) : startDate;
+    const timeLabel = event.time ? formatTime(event.time) : 'TBD';
+
+    return {
+      name: event.title,
+      type: event.type || 'Event',
+      status: statusLabel,
+      dates: `${startDate} - ${endDate}`,
+      time: timeLabel,
+      eligibility: event.eligibility || 'All',
+      pricing: priceLabel
+    };
+  }, [eventId, event]);
 
   const handleApprove = async (registrationId) => {
     try {
@@ -140,14 +191,32 @@ const RegistrationManagement = () => {
     setShowDetailsModal(true);
   };
 
+  const handleResendTicket = async (registrationId) => {
+    try {
+      const response = await registrationsAPI.resendTicket(registrationId);
+      if (response.success) {
+        showSuccess('Ticket email sent successfully');
+      } else {
+        showError(response.message || 'Failed to resend ticket email');
+      }
+    } catch (err) {
+      console.error('Error resending ticket email:', err);
+      showError(err.message || 'Failed to resend ticket email');
+    }
+  };
+
   const handleExport = () => {
     const csvContent = [
-      ['Name', 'Email', 'Phone', 'Status', 'Registered At', 'Event', 'Custom Fields'].join(','),
+      ['Name', 'Email', 'Phone', 'Status', 'Payment', 'Amount Paid', 'Team', 'Attendance', 'Registered At', 'Event', 'Custom Fields'].join(','),
       ...filteredRegistrations.map(reg => [
         reg.participantName,
         reg.email,
         reg.phone || '',
         reg.status,
+        reg.paymentStatus || '',
+        reg.amountPaid || 0,
+        reg.isTeam ? (reg.teamName || 'Team') : 'Individual',
+        reg.checkedIn ? 'Yes' : 'No',
         new Date(reg.registeredAt || reg.createdAt).toLocaleString(),
         reg.event?.title || event?.title || '',
         JSON.stringify(reg.customFieldResponses || {})
@@ -201,6 +270,42 @@ const RegistrationManagement = () => {
         </button>
       </div>
 
+      {eventOverview && (
+        <div className="overview-section">
+          <h2>Event Overview</h2>
+          <div className="overview-grid">
+            <div className="overview-card">
+              <span className="overview-label">Name</span>
+              <span className="overview-value">{eventOverview.name}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Type</span>
+              <span className="overview-value">{eventOverview.type}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Status</span>
+              <span className="overview-value">{eventOverview.status}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Dates</span>
+              <span className="overview-value">{eventOverview.dates}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Time</span>
+              <span className="overview-value">{eventOverview.time}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Eligibility</span>
+              <span className="overview-value">{eventOverview.eligibility}</span>
+            </div>
+            <div className="overview-card">
+              <span className="overview-label">Pricing</span>
+              <span className="overview-value">{eventOverview.pricing}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Statistics */}
       <div className="stats-grid">
         <div className="stat-card">
@@ -221,6 +326,30 @@ const RegistrationManagement = () => {
         </div>
       </div>
 
+      {analytics && (
+        <div className="analytics-section">
+          <h2>Event Analytics</h2>
+          <div className="analytics-grid">
+            <div className="stat-card">
+              <h3>{analytics.sales}</h3>
+              <p>Registrations / Sales</p>
+            </div>
+            <div className="stat-card">
+              <h3>{analytics.attendance}</h3>
+              <p>Attendance</p>
+            </div>
+            <div className="stat-card">
+              <h3>{analytics.teamCompletion}%</h3>
+              <p>Team Completion</p>
+            </div>
+            <div className="stat-card">
+              <h3>₹{analytics.revenue}</h3>
+              <p>Revenue</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="filters-section">
         <div className="search-box">
@@ -230,6 +359,24 @@ const RegistrationManagement = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
+        </div>
+        <div className="event-filter">
+          <label>Payment:</label>
+          <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)}>
+            <option value="all">All</option>
+            <option value="paid">Paid</option>
+            <option value="pending">Pending</option>
+            <option value="free">Free</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+        <div className="event-filter">
+          <label>Attendance:</label>
+          <select value={filterAttendance} onChange={(e) => setFilterAttendance(e.target.value)}>
+            <option value="all">All</option>
+            <option value="checked-in">Checked In</option>
+            <option value="not-checked-in">Not Checked In</option>
+          </select>
         </div>
         {!eventId && organizerEvents.length > 0 && (
           <div className="event-filter">
@@ -280,6 +427,9 @@ const RegistrationManagement = () => {
                 {!eventId && <th>Event</th>}
                 <th>Email</th>
                 <th>Phone</th>
+                <th>Payment</th>
+                <th>Team</th>
+                <th>Attendance</th>
                 <th>Registered</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -288,6 +438,7 @@ const RegistrationManagement = () => {
             <tbody>
               {filteredRegistrations.map(registration => {
                 const regEvent = registration.event || events.find(e => e.id === registration.eventId || e.id === registration.event);
+                const teamSize = registration.isTeam ? (registration.teamMembers?.length || 0) + 1 : 1;
                 return (
                   <tr key={registration._id || registration.id}>
                     <td>
@@ -301,6 +452,17 @@ const RegistrationManagement = () => {
                     {!eventId && <td>{regEvent?.title || 'Unknown Event'}</td>}
                     <td>{registration.email}</td>
                     <td>{registration.phone || '-'}</td>
+                    <td>
+                      <span className={`status-badge ${registration.paymentStatus || 'pending'}`}>
+                        {registration.paymentStatus || 'pending'}
+                      </span>
+                    </td>
+                    <td>{registration.isTeam ? `${registration.teamName || 'Team'} (${teamSize})` : 'Individual'}</td>
+                    <td>
+                      <span className={`status-badge ${registration.checkedIn ? 'approved' : 'pending'}`}>
+                        {registration.checkedIn ? 'Checked In' : 'Not Checked In'}
+                      </span>
+                    </td>
                   <td>{formatDate(registration.registeredAt || registration.createdAt)}</td>
                   <td>
                     <span className={`status-badge ${registration.status}`}>
@@ -315,6 +477,13 @@ const RegistrationManagement = () => {
                         title="View Details"
                       >
                         👁️
+                      </button>
+                      <button
+                        onClick={() => handleResendTicket(registration._id || registration.id)}
+                        className="btn-mail"
+                        title="Resend Ticket"
+                      >
+                        📧
                       </button>
                       {registration.status === 'pending' && (
                         <>
@@ -463,6 +632,12 @@ const RegistrationManagement = () => {
                   </button>
                 </>
               )}
+              <button
+                onClick={() => handleResendTicket(selectedRegistration._id || selectedRegistration.id)}
+                className="btn-secondary"
+              >
+                Resend Ticket Email
+              </button>
               <button onClick={() => setShowDetailsModal(false)} className="btn-secondary">
                 Close
               </button>

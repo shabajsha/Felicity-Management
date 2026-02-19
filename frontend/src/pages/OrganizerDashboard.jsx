@@ -63,6 +63,54 @@ const OrganizerDashboard = () => {
     };
   }, [myEvents, registrations]);
 
+  const getOrganizerStatus = (event) => {
+    const raw = (event.lifecycleStatus || event.status || '').toLowerCase();
+    if (raw === EVENT_STATUS.DRAFT || raw === EVENT_STATUS.PENDING || raw === EVENT_STATUS.REJECTED) {
+      return { label: 'Draft', className: 'draft' };
+    }
+    if (raw === EVENT_STATUS.PUBLISHED || raw === EVENT_STATUS.APPROVED) {
+      return { label: 'Published', className: 'published' };
+    }
+    if (raw === EVENT_STATUS.ONGOING) {
+      return { label: 'Ongoing', className: 'ongoing' };
+    }
+    if (raw === EVENT_STATUS.CLOSED || raw === EVENT_STATUS.COMPLETED) {
+      return { label: 'Closed', className: 'closed' };
+    }
+
+    const timeStatus = getEventStatus(event.date);
+    if (timeStatus === EVENT_STATUS.ONGOING) {
+      return { label: 'Ongoing', className: 'ongoing' };
+    }
+    if (timeStatus === EVENT_STATUS.PAST) {
+      return { label: 'Closed', className: 'closed' };
+    }
+    return { label: 'Published', className: 'published' };
+  };
+
+  const completedEvents = useMemo(
+    () => myEvents.filter(event => getOrganizerStatus(event).label === 'Closed'),
+    [myEvents]
+  );
+
+  const completedEventIds = useMemo(
+    () => completedEvents.map(event => (event._id || event.id)?.toString()),
+    [completedEvents]
+  );
+
+  const completedRegistrations = useMemo(
+    () => registrations.filter(reg => completedEventIds.includes((reg.event?._id || reg.eventId)?.toString())),
+    [registrations, completedEventIds]
+  );
+
+  const completedAnalytics = useMemo(() => {
+    const total = completedRegistrations.length;
+    const sales = completedRegistrations.filter(reg => ['paid', 'free'].includes(reg.paymentStatus)).length;
+    const revenue = completedRegistrations.reduce((sum, reg) => sum + (reg.amountPaid || 0), 0);
+    const attendance = completedRegistrations.filter(reg => reg.checkedIn).length;
+    return { total, sales, revenue, attendance };
+  }, [completedRegistrations]);
+
   // Get recent registrations (last 10)
   const recentRegistrations = useMemo(() => {
     const eventIds = myEvents.map(e => (e._id || e.id)?.toString());
@@ -111,15 +159,17 @@ const OrganizerDashboard = () => {
       return eid === (event._id || event.id)?.toString();
     });
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
+    const status = getOrganizerStatus(event);
     
     return (
       <div key={event._id || event.id} className="mini-event-card">
         <div className="event-header">
           <h4>{event.title}</h4>
-          <span className={`status-badge ${getEventStatus(event.date)}`}>
-            {getEventStatus(event.date)}
+          <span className={`status-badge ${status.className}`}>
+            {status.label}
           </span>
         </div>
+        <div className="event-type">{event.type || 'Event'}</div>
         <p className="event-date">{formatDate(event.date)}</p>
         <div className="event-stats">
           <span>{eventRegs.length} registrations</span>
@@ -148,12 +198,55 @@ const OrganizerDashboard = () => {
         </Link>
       </div>
 
+      <div className="events-section">
+        <div className="section-header">
+          <h2>Your Events</h2>
+          <Link to="/organizer/events">Manage All →</Link>
+        </div>
+        {myEvents.length > 0 ? (
+          <div className="events-carousel">
+            <div className="carousel-track">
+              {myEvents.map(event => (
+                <div key={event._id || event.id} className="carousel-card">
+                  {renderEventCard(event)}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No events created yet</p>
+            <Link to="/organizer/events/create" className="btn-primary">
+              Create Your First Event
+            </Link>
+          </div>
+        )}
+      </div>
+
       {/* Statistics Cards */}
       <div className="stats-grid">
         {renderStatCard('Total Events', stats.totalEvents, `${stats.upcomingEvents} upcoming`, '📅')}
         {renderStatCard('Total Registrations', stats.totalRegistrations, `${stats.confirmedRegistrations} confirmed`, '👥')}
         {renderStatCard('Pending Approvals', stats.pendingApprovals, 'Requires action', '⏳')}
         {renderStatCard('Past Events', stats.pastEvents, 'Completed', '✅')}
+      </div>
+
+      <div className="events-section">
+        <div className="section-header">
+          <h2>Completed Event Analytics</h2>
+        </div>
+        {completedEvents.length > 0 ? (
+          <div className="analytics-grid">
+            {renderStatCard('Registrations', completedAnalytics.total, 'Completed events', '🧾')}
+            {renderStatCard('Sales', completedAnalytics.sales, 'Paid or free', '💳')}
+            {renderStatCard('Revenue', `₹${completedAnalytics.revenue}`, 'Collected', '💰')}
+            {renderStatCard('Attendance', completedAnalytics.attendance, 'Checked in', '📍')}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <p>No completed events yet</p>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}

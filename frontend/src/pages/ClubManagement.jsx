@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
-import { clubsAPI } from '../utils/api';
+import { clubsAPI, adminAPI } from '../utils/api';
 import { CLUB_CATEGORIES } from '../utils/constants';
 import './ClubManagement.css';
 
@@ -32,7 +32,7 @@ const ClubManagement = () => {
     const fetchClubs = async () => {
       try {
         setLoading(true);
-        const response = await clubsAPI.getAll();
+        const response = await adminAPI.getAllClubs();
         if (response.success) {
           setClubs(response.data || []);
         } else {
@@ -60,9 +60,14 @@ const ClubManagement = () => {
       );
     }
 
+    if (filterStatus !== 'all') {
+      const isActive = filterStatus === 'active';
+      filtered = filtered.filter(org => (org.isActive !== false) === isActive);
+    }
+
     // Sort by total events
     return filtered.sort((a, b) => getClubEvents(b._id).length - getClubEvents(a._id).length);
-  }, [clubs, searchTerm]);
+  }, [clubs, searchTerm, filterStatus]);
 
   const stats = useMemo(() => {
     const total = clubs.length;
@@ -137,8 +142,8 @@ const ClubManagement = () => {
     }
   };
 
-  const handleDeleteClub = (clubId) => {
-    if (window.confirm('Are you sure you want to delete this club? This action cannot be undone.')) {
+  const handleArchiveClub = (clubId) => {
+    if (window.confirm('Archive this club? It will be hidden and cannot be used.')) {
       const clubEvents = events.filter(e => (e.clubId || e.clubId?._id) === clubId);
       if (clubEvents.length > 0) {
         showError(`Cannot delete club with ${clubEvents.length} associated events. Please remove events first.`);
@@ -146,10 +151,26 @@ const ClubManagement = () => {
       }
       clubsAPI.delete(clubId)
         .then(() => {
-          setClubs(prev => prev.filter(c => c._id !== clubId));
-          showSuccess('Club deleted successfully');
+          setClubs(prev => prev.map(c => (c._id === clubId ? { ...c, isActive: false } : c)));
+          showSuccess('Club archived successfully');
         })
-        .catch(() => showError('Failed to delete club'));
+        .catch(() => showError('Failed to archive club'));
+    }
+  };
+
+  const handleDeleteClubPermanent = (clubId) => {
+    if (window.confirm('Permanently delete this club? This cannot be undone.')) {
+      const clubEvents = events.filter(e => (e.clubId || e.clubId?._id) === clubId);
+      if (clubEvents.length > 0) {
+        showError(`Cannot delete club with ${clubEvents.length} associated events. Please remove events first.`);
+        return;
+      }
+      clubsAPI.deletePermanent(clubId)
+        .then(() => {
+          setClubs(prev => prev.filter(c => c._id !== clubId));
+          showSuccess('Club permanently deleted');
+        })
+        .catch(() => showError('Failed to delete club permanently'));
     }
   };
 
@@ -200,6 +221,14 @@ const ClubManagement = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        <div className="filter-row">
+          <label>Status</label>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Archived</option>
+          </select>
+        </div>
       </div>
 
       {/* Clubs Table */}
@@ -218,6 +247,7 @@ const ClubManagement = () => {
                 <th>Events</th>
                 <th>Followers</th>
                 <th>Upcoming</th>
+                <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -246,6 +276,11 @@ const ClubManagement = () => {
                     <td className="number">{club.members?.length || 0}</td>
                     <td className="number">{upcomingEvents}</td>
                     <td>
+                      <span className={`status-badge ${club.isActive !== false ? 'status-active' : 'status-inactive'}`}>
+                        {club.isActive !== false ? 'Active' : 'Archived'}
+                      </span>
+                    </td>
+                    <td>
                       <div className="action-buttons">
                         <button
                           onClick={() => handleViewDetails(club)}
@@ -255,9 +290,16 @@ const ClubManagement = () => {
                           👁️
                         </button>
                         <button
-                          onClick={() => handleDeleteClub(club._id)}
+                          onClick={() => handleArchiveClub(club._id)}
                           className="btn-delete"
-                          title="Delete"
+                          title="Archive"
+                        >
+                          🗄️
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClubPermanent(club._id)}
+                          className="btn-delete"
+                          title="Delete permanently"
                         >
                           🗑️
                         </button>

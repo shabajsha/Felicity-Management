@@ -7,7 +7,33 @@ import { USER_ROLES, EVENT_TYPES } from '../utils/constants';
 import { eventsAPI, registrationsAPI } from '../utils/api';
 import TeamRegistrationForm from './TeamRegistrationForm.jsx';
 import MerchandisePurchaseForm from './MerchandisePurchaseForm.jsx';
+import DiscussionForum from './DiscussionForum.jsx';
 import './EventDetails.css';
+
+const normalizeEligibility = (eligibility) => {
+  if (!eligibility) return 'All';
+  const value = String(eligibility).trim().toLowerCase();
+
+  if (
+    value === 'all' ||
+    value === 'both' ||
+    value.includes('iiit+external') ||
+    value.includes('iiit & external') ||
+    value.includes('iiit and external')
+  ) {
+    return 'All';
+  }
+
+  if (value.includes('iiit')) {
+    return value.includes('non') || value.includes('external') ? 'Non-IIIT' : 'IIIT';
+  }
+
+  if (value.includes('external') || value.includes('non')) {
+    return 'Non-IIIT';
+  }
+
+  return 'All';
+};
 
 function EventDetails({ onRegister, onDelete }) {
   const { id } = useParams();
@@ -16,9 +42,13 @@ function EventDetails({ onRegister, onDelete }) {
   const { showSuccess, showError } = useToast();
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [showMerchModal, setShowMerchModal] = useState(false);
+  const [showIndividualModal, setShowIndividualModal] = useState(false);
+  const [showModeModal, setShowModeModal] = useState(false);
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [myRegistration, setMyRegistration] = useState(null);
+  const [customFieldResponses, setCustomFieldResponses] = useState({});
 
   useEffect(() => {
     const fetchEvent = async () => {
@@ -40,6 +70,35 @@ function EventDetails({ onRegister, onDelete }) {
 
     fetchEvent();
   }, [id]);
+
+  useEffect(() => {
+    const fetchMyRegistration = async () => {
+      if (!user || user.role !== USER_ROLES.PARTICIPANT || !event) {
+        setMyRegistration(null);
+        return;
+      }
+
+      try {
+        const response = await registrationsAPI.getUserRegistrations();
+        if (response.success) {
+          const activeRegistration = (response.data || []).find(reg => {
+            const regEventId = reg.event?._id || reg.eventId || reg.event;
+            const regStatus = (reg.status || '').toLowerCase();
+            return (
+              regEventId?.toString() === (event._id || event.id)?.toString() &&
+              regStatus !== 'rejected' &&
+              regStatus !== 'cancelled'
+            );
+          });
+          setMyRegistration(activeRegistration || null);
+        }
+      } catch (err) {
+        console.error('Error fetching participant registrations:', err);
+      }
+    };
+
+    fetchMyRegistration();
+  }, [event, user]);
 
   if (loading) {
     return (
@@ -70,15 +129,28 @@ function EventDetails({ onRegister, onDelete }) {
     ? merchVariants.reduce((sum, v) => sum + (v.stock || 0), 0)
     : (event.merchandise?.stock || 0);
   const isMerch = event.type === EVENT_TYPES.MERCHANDISE;
+  const registrationMode =
+    event.participantType === 'Both'
+      ? 'Both'
+      : event.participantType === 'Team' || event.allowTeams
+        ? 'Team'
+        : 'Individual';
+  const hasRegistered = !isMerch && Boolean(myRegistration);
   const isFull = isMerch ? merchStock <= 0 : (registered >= capacity && capacity > 0);
   const isParticipant = user?.role === USER_ROLES.PARTICIPANT;
   const canManage = user?.role === USER_ROLES.ORGANIZER || user?.role === USER_ROLES.ADMIN;
   const availabilityStatus = getEventAvailability(event);
   const organizerDisplayName = getOrganizerName(event.organizer, event.organizerName);
   const deadlinePassed = event.registrationDeadline ? new Date(event.registrationDeadline) < new Date() : false;
-  const isEligible = event.eligibility === 'All'
-    || (event.eligibility === 'IIIT' && user?.participantType === 'IIIT')
-    || (event.eligibility === 'Non-IIIT' && user?.participantType === 'Non-IIIT');
+  const normalizedEligibility = normalizeEligibility(event.eligibility);
+  const isEligible = normalizedEligibility === 'All'
+    || (normalizedEligibility === 'IIIT' && user?.participantType === 'IIIT')
+    || (normalizedEligibility === 'Non-IIIT' && user?.participantType === 'Non-IIIT');
+  const eligibilityLabel = normalizedEligibility === 'All'
+    ? 'Both (IIIT + External)'
+    : normalizedEligibility === 'Non-IIIT'
+      ? 'External Only'
+      : 'IIIT Only';
 
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
@@ -98,10 +170,13 @@ function EventDetails({ onRegister, onDelete }) {
   };
 
   const handleRegister = async () => {
-    console.log('handleRegister called', { allowTeams: event.allowTeams });
-    
     if (!user) {
       showError('Please login to register');
+      return;
+    }
+
+    if (hasRegistered) {
+      showError('You are already registered for this event');
       return;
     }
     
@@ -119,14 +194,22 @@ function EventDetails({ onRegister, onDelete }) {
       return;
     }
 
-    if (event.allowTeams) {
-      console.log('Opening team modal');
+    if (registrationMode === 'Team') {
       setShowTeamModal(true);
+    } else if (registrationMode === 'Both') {
+      setShowModeModal(true);
     } else {
+      const hasCustomFields = Array.isArray(event.customFields) && event.customFields.length > 0;
+      if (hasCustomFields) {
+        setShowIndividualModal(true);
+        return;
+      }
+
       try {
         const response = await registrationsAPI.registerForEvent(event._id || event.id);
         if (response.success) {
           showSuccess('Successfully registered for event!');
+          setMyRegistration(response.data || { eventId: event._id || event.id, status: 'confirmed' });
           // Refresh event data to show updated registration count
           const eventResponse = await eventsAPI.getEventById(id);
           if (eventResponse.success) {
@@ -142,24 +225,69 @@ function EventDetails({ onRegister, onDelete }) {
     }
   };
 
-  const handleTeamSubmit = async (teamData) => {
+  const handleIndividualSubmit = async () => {
+    if (hasRegistered) {
+      showError('You are already registered for this event');
+      return;
+    }
+
+    const fields = event.customFields || [];
+    for (const field of fields) {
+      const fieldKey = field.id || field._id || field.label;
+      const value = customFieldResponses[fieldKey];
+      const isEmpty =
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0);
+      if (field.required && isEmpty) {
+        showError(`${field.label} is required`);
+        return;
+      }
+    }
+
     try {
-      const response = await registrationsAPI.registerForEvent(event._id || event.id, teamData);
+      const response = await registrationsAPI.registerForEvent(event._id || event.id, {
+        customFields: customFieldResponses
+      });
       if (response.success) {
-        showSuccess('Team registered successfully!');
-        setShowTeamModal(false);
-        // Refresh event data
+        showSuccess('Successfully registered for event!');
+        setMyRegistration(response.data || { eventId: event._id || event.id, status: 'confirmed' });
+        setShowIndividualModal(false);
+        setShowModeModal(false);
         const eventResponse = await eventsAPI.getEventById(id);
         if (eventResponse.success) {
           setEvent(eventResponse.data);
         }
-        navigate('/dashboard');
       } else {
-        showError(response.message || 'Failed to register team');
+        showError(response.message || 'Failed to register for event');
+      }
+    } catch (err) {
+      console.error('Error registering for event:', err);
+      showError(err?.message || 'Failed to register for event');
+    }
+  };
+
+  const handleTeamSubmit = async (teamData) => {
+    try {
+      const inviteEmails = (teamData.teamMembers || []).map(member => member.email).filter(Boolean);
+      const response = await registrationsAPI.createTeamRegistration({
+        eventId: event._id || event.id,
+        teamName: teamData.teamName,
+        desiredTeamSize: teamData.teamSize,
+        inviteEmails
+      });
+      if (response.success) {
+        showSuccess('Team created. Share invite links and track acceptances in your Teams dashboard.');
+        setShowTeamModal(false);
+        setShowModeModal(false);
+        navigate('/dashboard/teams');
+      } else {
+        showError(response.message || 'Failed to create team registration');
       }
     } catch (err) {
       console.error('Error registering team:', err);
-      showError(err?.message || 'Failed to register team');
+      showError(err?.message || 'Failed to create team registration');
     }
   };
 
@@ -192,8 +320,10 @@ function EventDetails({ onRegister, onDelete }) {
               <span className={`category-badge ${event.category ? event.category.toLowerCase().replace(/\s/g, '-') : 'default'}`}>
                 {event.category || 'Uncategorized'}
               </span>
-              {event.type === EVENT_TYPES.MERCHANDISE && (
+              {event.type === EVENT_TYPES.MERCHANDISE ? (
                 <span className="type-badge merchandise">🛍️ Merchandise</span>
+              ) : (
+                <span className="type-badge">{event.type || 'Event'}</span>
               )}
             </div>
             <span className={`status-badge ${availabilityStatus.class}`}>
@@ -208,6 +338,17 @@ function EventDetails({ onRegister, onDelete }) {
         </div>
 
         <div className="details-body">
+          {event.imageUrl && (
+            <div className="event-image-wrapper">
+              <img
+                src={event.imageUrl}
+                alt={event.title}
+                className="event-image"
+                loading="lazy"
+              />
+            </div>
+          )}
+
           <div className="info-grid">
             <div className="info-item">
               <div className="info-icon">📅</div>
@@ -252,7 +393,7 @@ function EventDetails({ onRegister, onDelete }) {
               <div className="info-icon">✅</div>
               <div className="info-content">
                 <span className="info-label">Eligibility</span>
-                <span className="info-value">{event.eligibility || 'All'}</span>
+                <span className="info-value">{eligibilityLabel}</span>
               </div>
             </div>
             <div className="info-item">
@@ -310,13 +451,21 @@ function EventDetails({ onRegister, onDelete }) {
             <button 
               className="btn btn-primary btn-large"
               onClick={handleRegister}
-              disabled={isFull || deadlinePassed || !isEligible}
+              disabled={isFull || deadlinePassed || !isEligible || hasRegistered}
             >
-              {isFull
+              {hasRegistered
+                ? '✓ Already Registered'
+                : isFull
                 ? '✓ Sold Out'
                 : deadlinePassed
                   ? 'Deadline Passed'
-                  : (!isEligible ? 'Not Eligible' : (isMerch ? '🛍️ Purchase' : (event.allowTeams ? '👥 Register Team' : '✓ Register for This Event')))
+                  : (!isEligible
+                    ? 'Not Eligible'
+                    : (isMerch
+                      ? '🛍️ Purchase'
+                      : (registrationMode === 'Team'
+                        ? '👥 Register Team'
+                        : (registrationMode === 'Both' ? '🧩 Choose Registration Type' : '✓ Register for This Event'))))
               }
             </button>
           )}
@@ -349,6 +498,12 @@ function EventDetails({ onRegister, onDelete }) {
         </div>
       </div>
 
+      {user && (
+        <div className="event-discussion-section">
+          <DiscussionForum eventId={event._id || event.id} embedded />
+        </div>
+      )}
+
       {/* Team Registration Modal */}
       {showTeamModal && (
         <div className="modal-overlay" onClick={() => setShowTeamModal(false)}>
@@ -358,6 +513,173 @@ function EventDetails({ onRegister, onDelete }) {
               onSubmit={handleTeamSubmit}
               onCancel={() => setShowTeamModal(false)}
             />
+          </div>
+        </div>
+      )}
+
+      {showModeModal && (
+        <div className="modal-overlay" onClick={() => setShowModeModal(false)}>
+          <div className="modal-content team-modal" onClick={e => e.stopPropagation()}>
+            <div className="team-registration-form">
+              <div className="form-header">
+                <h2>Choose Registration Type</h2>
+              </div>
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn-submit"
+                  onClick={() => {
+                    setShowModeModal(false);
+                    setShowIndividualModal(true);
+                  }}
+                >
+                  Register as Individual
+                </button>
+                <button
+                  type="button"
+                  className="btn-submit"
+                  onClick={() => {
+                    setShowModeModal(false);
+                    setShowTeamModal(true);
+                  }}
+                >
+                  Register as Team
+                </button>
+                <button type="button" className="btn-cancel" onClick={() => setShowModeModal(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showIndividualModal && (
+        <div className="modal-overlay" onClick={() => setShowIndividualModal(false)}>
+          <div className="modal-content team-modal" onClick={e => e.stopPropagation()}>
+            <div className="team-registration-form">
+              <div className="form-header">
+                <h2>Complete Registration</h2>
+              </div>
+
+              {Array.isArray(event.customFields) && event.customFields.length > 0 && (
+                <div className="form-section">
+                  <h3>Additional Information</h3>
+                  {event.customFields.map((field) => {
+                    const fieldKey = field.id || field._id || field.label;
+                    const value = customFieldResponses[fieldKey];
+
+                    if (field.type === 'textarea') {
+                      return (
+                        <div className="form-group" key={fieldKey}>
+                          <label>{field.label}{field.required ? ' *' : ''}</label>
+                          <textarea
+                            rows="3"
+                            value={value || ''}
+                            onChange={(e) => setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                          />
+                        </div>
+                      );
+                    }
+
+                    if (field.type === 'select') {
+                      return (
+                        <div className="form-group" key={fieldKey}>
+                          <label>{field.label}{field.required ? ' *' : ''}</label>
+                          <select
+                            value={value || ''}
+                            onChange={(e) => setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                          >
+                            <option value="">Select</option>
+                            {(field.options || []).map(option => (
+                              <option key={option} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    }
+
+                    if (field.type === 'radio') {
+                      return (
+                        <div className="form-group" key={fieldKey}>
+                          <label>{field.label}{field.required ? ' *' : ''}</label>
+                          {(field.options || []).map(option => (
+                            <label key={option}>
+                              <input
+                                type="radio"
+                                name={`custom-${fieldKey}`}
+                                checked={value === option}
+                                onChange={() => setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: option }))}
+                              />
+                              {option}
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    }
+
+                    if (field.type === 'checkbox') {
+                      const selectedValues = Array.isArray(value) ? value : [];
+                      return (
+                        <div className="form-group" key={fieldKey}>
+                          <label>{field.label}{field.required ? ' *' : ''}</label>
+                          {(field.options || []).map(option => (
+                            <label key={option}>
+                              <input
+                                type="checkbox"
+                                checked={selectedValues.includes(option)}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...selectedValues, option]
+                                    : selectedValues.filter(v => v !== option);
+                                  setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: next }));
+                                }}
+                              />
+                              {option}
+                            </label>
+                          ))}
+                        </div>
+                      );
+                    }
+
+                    if (field.type === 'file') {
+                      return (
+                        <div className="form-group" key={fieldKey}>
+                          <label>{field.label}{field.required ? ' *' : ''}</label>
+                          <input
+                            type="file"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: file ? file.name : '' }));
+                            }}
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="form-group" key={fieldKey}>
+                        <label>{field.label}{field.required ? ' *' : ''}</label>
+                        <input
+                          type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : field.type === 'email' ? 'email' : 'text'}
+                          value={value || ''}
+                          onChange={(e) => setCustomFieldResponses(prev => ({ ...prev, [fieldKey]: e.target.value }))}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="form-actions">
+                <button type="button" className="btn-cancel" onClick={() => setShowIndividualModal(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn-submit" onClick={handleIndividualSubmit}>
+                  Register
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

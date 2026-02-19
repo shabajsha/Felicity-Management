@@ -19,7 +19,30 @@ const PaymentApproval = () => {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const assetBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const getApprovalStatus = (registration) => {
+    if (registration.paymentApprovalStatus) {
+      return registration.paymentApprovalStatus;
+    }
+    if (registration.paymentStatus === 'paid') return 'approved';
+    if (registration.paymentStatus === 'failed') return 'rejected';
+    return 'pending';
+  };
+
+  const getPaymentProofUrl = (proofPath) => {
+    if (!proofPath) return '';
+    if (/^https?:\/\//i.test(proofPath)) return proofPath;
+
+    const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+    let origin = 'http://localhost:5000';
+    try {
+      origin = new URL(apiBase).origin;
+    } catch (_) {
+      origin = 'http://localhost:5000';
+    }
+
+    const normalizedPath = proofPath.startsWith('/') ? proofPath : `/${proofPath}`;
+    return `${origin}${normalizedPath}`;
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -61,6 +84,7 @@ const PaymentApproval = () => {
         return eventIds.includes(regEventId);
       })
       .filter(reg => reg.paymentStatus !== 'free')
+      .filter(reg => (reg.paymentApprovalStatus || 'pending') !== 'awaiting-proof')
       .map(reg => ({
         ...reg,
         event: reg.event && reg.event.title ? reg.event : paymentEvents.find(e => (e.id || e._id) === (reg.event?._id || reg.eventId || reg.event))
@@ -80,7 +104,7 @@ const PaymentApproval = () => {
     }
 
     if (filterStatus !== 'all') {
-      filtered = filtered.filter(p => p.paymentStatus === filterStatus);
+      filtered = filtered.filter(p => getApprovalStatus(p) === filterStatus);
     }
 
     if (searchTerm.trim()) {
@@ -98,9 +122,9 @@ const PaymentApproval = () => {
   // Calculate stats
   const stats = useMemo(() => {
     const total = paymentRegistrations.length;
-    const pending = paymentRegistrations.filter(p => p.paymentStatus === 'pending').length;
-    const approved = paymentRegistrations.filter(p => p.paymentStatus === 'paid').length;
-    const rejected = paymentRegistrations.filter(p => p.paymentStatus === 'failed').length;
+    const pending = paymentRegistrations.filter(p => getApprovalStatus(p) === 'pending').length;
+    const approved = paymentRegistrations.filter(p => getApprovalStatus(p) === 'approved').length;
+    const rejected = paymentRegistrations.filter(p => getApprovalStatus(p) === 'rejected').length;
     const totalRevenue = paymentRegistrations
       .filter(p => p.paymentStatus === 'paid')
       .reduce((sum, p) => sum + (p.amountPaid || p.paymentAmount || p.event?.paymentAmount || 0), 0);
@@ -112,6 +136,7 @@ const PaymentApproval = () => {
     try {
       const res = await registrationsAPI.updatePayment(paymentId, {
         paymentStatus: 'paid',
+        paymentApprovalStatus: 'approved',
         amountPaid: paymentAmount
       });
       if (res.success) {
@@ -130,7 +155,8 @@ const PaymentApproval = () => {
   const handleReject = async (paymentId) => {
     try {
       const res = await registrationsAPI.updatePayment(paymentId, {
-        paymentStatus: 'failed'
+        paymentStatus: 'failed',
+        paymentApprovalStatus: 'rejected'
       });
       if (res.success) {
         const updated = res.data;
@@ -204,8 +230,8 @@ const PaymentApproval = () => {
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="all">All Status</option>
               <option value="pending">Pending</option>
-              <option value="paid">Paid</option>
-              <option value="failed">Failed</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
         </div>
@@ -227,8 +253,8 @@ const PaymentApproval = () => {
                   <h3>{payment.participantName}</h3>
                   <p className="payment-email">{payment.email}</p>
                 </div>
-                <span className={`payment-status status-${payment.paymentStatus}`}>
-                  {payment.paymentStatus}
+                <span className={`payment-status status-${getApprovalStatus(payment)}`}>
+                  {getApprovalStatus(payment)}
                 </span>
               </div>
 
@@ -255,7 +281,7 @@ const PaymentApproval = () => {
 
               {payment.paymentScreenshot && (
                 <div className="payment-screenshot">
-                  <img src={`${assetBase}${payment.paymentScreenshot}`} alt="Payment proof" />
+                  <img src={getPaymentProofUrl(payment.paymentScreenshot)} alt="Payment proof" />
                 </div>
               )}
 
@@ -266,7 +292,7 @@ const PaymentApproval = () => {
                 >
                   View Details
                 </button>
-                {payment.paymentStatus === 'pending' && (
+                {getApprovalStatus(payment) === 'pending' && (
                   <>
                     <button
                       className="btn-approve"
@@ -327,8 +353,8 @@ const PaymentApproval = () => {
                 <div className="detail-row">
                   <span className="label">Status:</span>
                   <span className="value">
-                    <span className={`payment-status status-${selectedPayment.paymentStatus}`}>
-                      {selectedPayment.paymentStatus}
+                    <span className={`payment-status status-${getApprovalStatus(selectedPayment)}`}>
+                      {getApprovalStatus(selectedPayment)}
                     </span>
                   </span>
                 </div>
@@ -347,15 +373,8 @@ const PaymentApproval = () => {
               {selectedPayment.paymentScreenshot && (
                 <div className="detail-section">
                   <h3>Payment Proof</h3>
-                  <img src={`${assetBase}${selectedPayment.paymentScreenshot}`} alt="Payment proof" className="payment-proof-image" />
-                </div>
-              )}
-
-              {selectedPayment.paymentScreenshot && (
-                <div className="detail-section">
-                  <h3>Payment Proof</h3>
                   <div className="screenshot-large">
-                    <img src={selectedPayment.paymentScreenshot} alt="Payment proof" />
+                    <img src={getPaymentProofUrl(selectedPayment.paymentScreenshot)} alt="Payment proof" className="payment-proof-image" />
                   </div>
                 </div>
               )}
@@ -369,7 +388,7 @@ const PaymentApproval = () => {
             </div>
 
             <div className="modal-actions">
-              {selectedPayment.paymentStatus === 'pending' && (
+              {getApprovalStatus(selectedPayment) === 'pending' && (
                 <>
                   <button
                     className="btn-approve-modal"

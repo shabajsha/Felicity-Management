@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import EventCard from './EventCard';
 import { searchEvents, filterEvents, sortEvents } from '../utils/helpers';
 import { EVENT_TYPES, EVENT_CATEGORIES } from '../utils/constants';
-import { eventsAPI } from '../utils/api';
+import { eventsAPI, registrationsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext.jsx';
 import './EventList.css';
 
@@ -20,6 +20,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
   const [followedOnly, setFollowedOnly] = useState(false);
   const [sortBy, setSortBy] = useState('date');
   const [trendingEvents, setTrendingEvents] = useState([]);
+  const [myRegistrations, setMyRegistrations] = useState([]);
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -59,6 +60,38 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
     fetchTrending();
   }, []);
 
+  useEffect(() => {
+    const fetchMyRegistrations = async () => {
+      if (!user || user.role !== 'Participant') {
+        setMyRegistrations([]);
+        return;
+      }
+
+      try {
+        const response = await registrationsAPI.getUserRegistrations();
+        if (response.success) {
+          setMyRegistrations(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching participant registrations:', err);
+      }
+    };
+
+    fetchMyRegistrations();
+  }, [user]);
+
+  const registeredEventIds = useMemo(() => {
+    return new Set(
+      (myRegistrations || [])
+        .filter(registration => {
+          const status = (registration.status || '').toLowerCase();
+          return status !== 'rejected' && status !== 'cancelled';
+        })
+        .map(registration => (registration.event?._id || registration.eventId || registration.event || '').toString())
+        .filter(Boolean)
+    );
+  }, [myRegistrations]);
+
   const filteredEvents = useMemo(() => {
     let result = searchEvents(events, searchTerm);
     result = filterEvents(result, { 
@@ -91,6 +124,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
                 event={event}
                 onDelete={onDelete}
                 onRegister={onRegister}
+                isRegistered={registeredEventIds.has((event._id || event.id || '').toString())}
               />
             ))}
           </div>
@@ -194,6 +228,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
               event={event}
               onDelete={onDelete}
               onRegister={onRegister}
+              isRegistered={registeredEventIds.has((event._id || event.id || '').toString())}
             />
           ))}
         </div>

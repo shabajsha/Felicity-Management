@@ -4,7 +4,7 @@ import { formatDateShort, getEventAvailability, formatTime, getOrganizerName } f
 import { EVENT_TYPES, USER_ROLES } from '../utils/constants';
 import './EventCard.css';
 
-function EventCard({ event, onDelete, onRegister }) {
+function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
   const { user } = useAuth();
 
   const availabilityStatus = getEventAvailability(event);
@@ -32,6 +32,15 @@ function EventCard({ event, onDelete, onRegister }) {
       </div>
 
       <div className="event-card-body">
+        {event.imageUrl && (
+          <img
+            src={event.imageUrl}
+            alt={event.title}
+            className="event-cover"
+            loading="lazy"
+          />
+        )}
+
         <h3 className="event-title">
           <Link to={`/event/${event._id || event.id}`}>{event.title}</Link>
         </h3>
@@ -52,9 +61,9 @@ function EventCard({ event, onDelete, onRegister }) {
         </div>
 
         <p className="event-description">
-          {event.description.length > 120 
-            ? `${event.description.substring(0, 120)}...` 
-            : event.description}
+          {(event.description || '').length > 120
+            ? `${event.description.substring(0, 120)}...`
+            : (event.description || 'No description available.')}
         </p>
 
         <div className="event-organizer">
@@ -80,9 +89,9 @@ function EventCard({ event, onDelete, onRegister }) {
           <button 
             className="btn btn-primary"
             onClick={() => onRegister(event._id || event.id)}
-            disabled={isFull}
+            disabled={isFull || isRegistered}
           >
-            {isFull ? '✓ Full' : '✓ Register'}
+            {isRegistered ? '✓ Already Registered' : isFull ? '✓ Full' : '✓ Register'}
           </button>
         )}
         {canManage && (

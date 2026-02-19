@@ -18,10 +18,10 @@ export const getOrganizerName = (organizer, organizerName) => {
  */
 export const formatDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
+  return date.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
-    month: 'long', 
+    month: 'long',
     day: 'numeric'
   });
 };
@@ -31,10 +31,10 @@ export const formatDate = (dateString) => {
  */
 export const formatDateShort = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
-    year: 'numeric' 
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
   });
 };
 
@@ -43,9 +43,9 @@ export const formatDateShort = (dateString) => {
  */
 export const formatEventDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', { 
-    month: 'short', 
-    day: 'numeric', 
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit'
@@ -92,7 +92,16 @@ export const isValidPassword = (password) => {
  * Check if event is full
  */
 export const isEventFull = (event) => {
-  return event.registered >= event.capacity;
+  if (event.type === 'Merchandise') {
+    const variants = event.merchandise?.variants || [];
+    const stock = variants.length > 0
+      ? variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+      : (event.merchandise?.stock || 0);
+    return stock <= 0;
+  }
+  const capacity = event.capacity || event.maxParticipants || 0;
+  if (capacity <= 0) return false;
+  return (event.registered || 0) >= capacity;
 };
 
 /**
@@ -119,7 +128,7 @@ export const getEventAvailability = (event) => {
   const registered = event.registered || 0;
   const available = capacity - registered;
   const percentage = capacity > 0 ? (registered / capacity) * 100 : 0;
-  
+
   if (percentage >= 90) return { text: 'Almost Full!', class: 'almost-full', available };
   if (percentage >= 70) return { text: 'Filling Up Fast', class: 'filling-up', available };
   return { text: 'Available', class: 'available', available };
@@ -166,13 +175,34 @@ export const searchEvents = (events, query) => {
 
   const normalizeOrganizer = (event) => getOrganizerName(event.organizer, event.organizerName);
   const lowerQuery = query.toLowerCase();
-  return events.filter(event => 
-    event.title.toLowerCase().includes(lowerQuery) ||
-    event.location.toLowerCase().includes(lowerQuery) ||
-    event.description.toLowerCase().includes(lowerQuery) ||
-    normalizeOrganizer(event).toLowerCase().includes(lowerQuery) ||
-    event.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
-  );
+  const fuzzyMatch = (text, needle) => {
+    if (!text || !needle) return false;
+    let textIndex = 0;
+    const lowered = text.toLowerCase();
+    for (let i = 0; i < needle.length; i += 1) {
+      textIndex = lowered.indexOf(needle[i], textIndex);
+      if (textIndex === -1) return false;
+      textIndex += 1;
+    }
+    return true;
+  };
+
+  return events.filter(event => {
+    const title = (event.title || '').toLowerCase();
+    const organizer = normalizeOrganizer(event).toLowerCase();
+    const matchesName =
+      title.includes(lowerQuery) ||
+      organizer.includes(lowerQuery) ||
+      fuzzyMatch(title, lowerQuery) ||
+      fuzzyMatch(organizer, lowerQuery);
+
+    return (
+      matchesName ||
+      (event.location || '').toLowerCase().includes(lowerQuery) ||
+      (event.description || '').toLowerCase().includes(lowerQuery) ||
+      event.tags?.some(tag => tag.toLowerCase().includes(lowerQuery))
+    );
+  });
 };
 
 /**
@@ -180,27 +210,27 @@ export const searchEvents = (events, query) => {
  */
 export const filterEvents = (events, filters) => {
   let filtered = [...events];
-  
+
   if (filters.type && filters.type !== 'All') {
     filtered = filtered.filter(e => e.type === filters.type);
   }
-  
+
   if (filters.category && filters.category !== 'All') {
     filtered = filtered.filter(e => e.category === filters.category);
   }
-  
+
   if (filters.eligibility && filters.eligibility !== 'All') {
     filtered = filtered.filter(e => e.eligibility === filters.eligibility);
   }
-  
+
   if (filters.dateFrom) {
     filtered = filtered.filter(e => new Date(e.date) >= new Date(filters.dateFrom));
   }
-  
+
   if (filters.dateTo) {
     filtered = filtered.filter(e => new Date(e.date) <= new Date(filters.dateTo));
   }
-  
+
   if (filters.followedOnly && filters.followedClubs?.length > 0) {
     filtered = filtered.filter(e => {
       const clubId = e.clubId?._id || e.clubId;
@@ -208,7 +238,7 @@ export const filterEvents = (events, filters) => {
       return filters.followedClubs.includes(clubId) || filters.followedClubs.includes(organizerId);
     });
   }
-  
+
   return filtered;
 };
 
@@ -217,7 +247,7 @@ export const filterEvents = (events, filters) => {
  */
 export const sortEvents = (events, sortBy) => {
   const sorted = [...events];
-  
+
   switch (sortBy) {
     case 'date':
       return sorted.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -255,11 +285,11 @@ export const getTrendingEvents = (events, limit = 5) => {
  */
 export const exportToCSV = (data, filename) => {
   if (!data || data.length === 0) return;
-  
+
   const headers = Object.keys(data[0]);
   const csvContent = [
     headers.join(','),
-    ...data.map(row => 
+    ...data.map(row =>
       headers.map(header => {
         const value = row[header];
         // Escape commas and quotes
@@ -269,7 +299,7 @@ export const exportToCSV = (data, filename) => {
       }).join(',')
     )
   ].join('\n');
-  
+
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
@@ -317,11 +347,11 @@ export const getCategoryColor = (category) => {
 export const getEventStatus = (eventDate) => {
   const now = new Date();
   const date = new Date(eventDate);
-  
+
   // Normalize dates to compare without time
   now.setHours(0, 0, 0, 0);
   date.setHours(0, 0, 0, 0);
-  
+
   if (date > now) {
     return 'upcoming';
   } else if (date.getTime() === now.getTime()) {
@@ -339,11 +369,11 @@ export const calculateEventStats = (registrations) => {
   const confirmed = registrations.filter(r => r.status === 'confirmed').length;
   const cancelled = registrations.filter(r => r.status === 'cancelled').length;
   const pending = registrations.filter(r => r.status === 'pending').length;
-  
+
   const totalRevenue = registrations
     .filter(r => r.paymentStatus === 'paid')
     .reduce((sum, r) => sum + (r.amount || 0), 0);
-  
+
   return {
     total,
     confirmed,

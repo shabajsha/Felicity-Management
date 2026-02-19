@@ -9,7 +9,7 @@ const getAuthToken = () => {
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
   const token = getAuthToken();
-  
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -20,11 +20,11 @@ const apiCall = async (endpoint, options = {}) => {
   };
 
   try {
-    console.log('API Request:', `${API_BASE_URL}${endpoint}`, config);
+
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
     const data = await response.json();
 
-    console.log('API Response:', response.status, data);
+
 
     if (!response.ok) {
       throw new Error(data.message || `API request failed with status ${response.status}`);
@@ -64,6 +64,14 @@ export const authAPI = {
       method: 'PUT',
       body: JSON.stringify(passwordData),
     }),
+
+  requestOrganizerPasswordReset: (payload) =>
+    apiCall('/auth/organizer/password-reset-request', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getOrganizerPasswordResetRequests: () => apiCall('/auth/organizer/password-reset-requests'),
 };
 
 // Events API
@@ -139,6 +147,33 @@ export const eventsAPI = {
 
 // Registrations API
 export const registrationsAPI = {
+  createTeamRegistration: (payload) =>
+    apiCall('/registrations/team/create', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getMyTeams: () => apiCall('/registrations/team/my-teams'),
+
+  getMyPendingTeamInvites: () => apiCall('/registrations/team/invites/me'),
+
+  addTeamInvites: (teamId, inviteEmails) =>
+    apiCall(`/registrations/team/${teamId}/invites`, {
+      method: 'POST',
+      body: JSON.stringify({ inviteEmails }),
+    }),
+
+  removeTeamInvite: (teamId, inviteId) =>
+    apiCall(`/registrations/team/${teamId}/invites/${inviteId}`, {
+      method: 'DELETE',
+    }),
+
+  respondToMyTeamInvite: (teamId, action) =>
+    apiCall(`/registrations/team/${teamId}/invites/respond`, {
+      method: 'PUT',
+      body: JSON.stringify({ action }),
+    }),
+
   register: (registrationData) =>
     apiCall('/registrations', {
       method: 'POST',
@@ -182,6 +217,11 @@ export const registrationsAPI = {
     apiCall(`/registrations/${id}/payment`, {
       method: 'PUT',
       body: JSON.stringify(paymentData),
+    }),
+
+  resendTicket: (id) =>
+    apiCall(`/registrations/${id}/resend-ticket`, {
+      method: 'PUT',
     }),
 
   uploadPaymentProof: (id, file) => {
@@ -236,6 +276,11 @@ export const clubsAPI = {
       method: 'DELETE',
     }),
 
+  deletePermanent: (id) =>
+    apiCall(`/clubs/${id}?permanent=true`, {
+      method: 'DELETE',
+    }),
+
   addMember: (id, userId) =>
     apiCall(`/clubs/${id}/members`, {
       method: 'POST',
@@ -257,6 +302,8 @@ export const adminAPI = {
     return apiCall(`/admin/users${queryString ? `?${queryString}` : ''}`);
   },
 
+  getAllClubs: () => apiCall('/admin/clubs'),
+
   getAllEvents: () => apiCall('/admin/events'),
 
   getUser: (id) => apiCall(`/admin/users/${id}`),
@@ -269,6 +316,11 @@ export const adminAPI = {
 
   deleteUser: (id) =>
     apiCall(`/admin/users/${id}`, {
+      method: 'DELETE',
+    }),
+
+  deleteUserPermanent: (id) =>
+    apiCall(`/admin/users/${id}?permanent=true`, {
       method: 'DELETE',
     }),
 
@@ -290,6 +342,15 @@ export const adminAPI = {
   resetOrganizerPassword: (id) =>
     apiCall(`/admin/users/${id}/reset-password`, {
       method: 'PUT'
+    }),
+
+  getPasswordResetRequests: (status = 'all') =>
+    apiCall(`/admin/password-reset-requests?status=${encodeURIComponent(status)}`),
+
+  reviewPasswordResetRequest: (id, payload) =>
+    apiCall(`/admin/password-reset-requests/${id}/review`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     })
 };
 
@@ -315,10 +376,10 @@ export const discussionsAPI = {
 
   getById: (id) => apiCall(`/discussions/${id}`),
 
-  reply: (id, content) =>
+  reply: (id, payload) =>
     apiCall(`/discussions/${id}/reply`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(typeof payload === 'string' ? { content: payload } : payload),
     }),
 
   update: (id, updateData) =>
@@ -336,6 +397,23 @@ export const discussionsAPI = {
     apiCall(`/discussions/${id}/pin`, {
       method: 'PUT',
     }),
+
+  react: (id, emoji) =>
+    apiCall(`/discussions/${id}/react`, {
+      method: 'PUT',
+      body: JSON.stringify({ emoji }),
+    }),
+
+  reactToReply: (discussionId, replyId, emoji) =>
+    apiCall(`/discussions/${discussionId}/replies/${replyId}/react`, {
+      method: 'PUT',
+      body: JSON.stringify({ emoji }),
+    }),
+
+  deleteReply: (discussionId, replyId) =>
+    apiCall(`/discussions/${discussionId}/replies/${replyId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Feedback API
@@ -349,6 +427,34 @@ export const feedbackAPI = {
   getEventFeedback: (eventId, params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiCall(`/feedback/event/${eventId}${queryString ? `?${queryString}` : ''}`);
+  },
+
+  exportEventFeedback: async (eventId, params = {}) => {
+    const token = getAuthToken();
+    const queryString = new URLSearchParams(params).toString();
+    const response = await fetch(`${API_BASE_URL}/feedback/event/${eventId}/export${queryString ? `?${queryString}` : ''}`, {
+      method: 'GET',
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` })
+      }
+    });
+
+    if (!response.ok) {
+      let message = 'Failed to export feedback';
+      try {
+        const data = await response.json();
+        message = data.message || message;
+      } catch (_) {
+        message = `Export failed with status ${response.status}`;
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('content-disposition') || '';
+    const nameMatch = contentDisposition.match(/filename="([^"]+)"/i);
+    const fileName = nameMatch?.[1] || 'feedback-export.csv';
+    return { blob, fileName };
   },
 
   getMyFeedback: () => apiCall('/feedback/my-feedback'),

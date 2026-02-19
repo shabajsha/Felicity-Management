@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useData } from '../context/DataContext.jsx';
@@ -7,8 +7,11 @@ import { discussionsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers.js';
 import './DiscussionForum.css';
 
-function DiscussionForum() {
-  const { eventId } = useParams();
+const REACTIONS = ['👍', '❤️', '🔥', '👏', '❓'];
+
+function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
+  const { eventId: eventIdFromRoute } = useParams();
+  const eventId = eventIdProp || eventIdFromRoute;
   const navigate = useNavigate();
   const { user } = useAuth();
   const { events } = useData();
@@ -20,30 +23,81 @@ function DiscussionForum() {
   const [showNewThread, setShowNewThread] = useState(false);
   const [selectedThread, setSelectedThread] = useState(null);
   const [replyContent, setReplyContent] = useState('');
+  const [replyParentId, setReplyParentId] = useState(null);
   const [filterCategory, setFilterCategory] = useState('All');
   const [sortBy, setSortBy] = useState('recent');
+  const [newItemsCount, setNewItemsCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const baselineRef = useRef({});
 
   useEffect(() => {
-    const fetchDiscussions = async () => {
+    const fetchDiscussions = async (background = false) => {
       try {
-        setLoading(true);
+        if (!background) setLoading(true);
+        if (background) setIsRefreshing(true);
         const response = await discussionsAPI.getEventDiscussions(eventId);
         if (response.success) {
-          setDiscussions(response.data || []);
+          const incoming = response.data || [];
+
+          if (background && baselineRef.current && Object.keys(baselineRef.current).length > 0) {
+            let delta = 0;
+            incoming.forEach((item) => {
+              const key = item._id || item.id;
+              const previous = baselineRef.current[key];
+              if (!previous) {
+                delta += 1;
+                return;
+              }
+              const oldReplies = previous.replyCount || previous.replies?.length || 0;
+              const newReplies = item.replyCount || item.replies?.length || 0;
+              if (newReplies > oldReplies) {
+                delta += (newReplies - oldReplies);
+              }
+            });
+            if (delta > 0) {
+              setNewItemsCount((count) => count + delta);
+              showSuccess(`${delta} new forum update${delta > 1 ? 's' : ''}`);
+            }
+          }
+
+          const snapshot = {};
+          incoming.forEach((item) => {
+            snapshot[item._id || item.id] = item;
+          });
+          baselineRef.current = snapshot;
+
+          setDiscussions(incoming);
+
+          if (selectedThread) {
+            const selectedId = selectedThread._id || selectedThread.id;
+            const updatedSelected = incoming.find((item) => (item._id || item.id) === selectedId);
+            if (updatedSelected) {
+              setSelectedThread(updatedSelected);
+            }
+          }
         }
       } catch (err) {
-        console.error('Error fetching discussions:', err);
+        if (!background) {
+          console.error('Error fetching discussions:', err);
+        }
       } finally {
-        setLoading(false);
+        if (!background) setLoading(false);
+        if (background) setIsRefreshing(false);
       }
     };
 
-    fetchDiscussions();
-  }, [eventId]);
+    fetchDiscussions(false);
+
+    const poll = setInterval(() => {
+      fetchDiscussions(true);
+    }, 8000);
+
+    return () => clearInterval(poll);
+  }, [eventId, selectedThread, showSuccess]);
 
   const event = events.find(e => (e._id || e.id) === eventId);
 
-  const categories = ['General', 'Questions', 'Technical', 'Suggestions', 'Issues'];
+  const categories = ['General', 'Questions', 'Technical', 'Suggestions', 'Issues', 'Announcements'];
 
   const eventDiscussions = useMemo(() => {
     // API already filters by eventId, so just return all discussions
@@ -65,8 +119,11 @@ function DiscussionForum() {
 
     // Sort discussions
     if (sortBy === 'recent') {
-      filtered = [...filtered].sort((a, b) => 
-        new Date(b.createdAt) - new Date(a.createdAt)
+      filtered = [...filtered].sort((a, b) => {
+        if (a.isPinned !== b.isPinned) return a.isPinned ? -1 : 1;
+        if (a.isAnnouncement !== b.isAnnouncement) return a.isAnnouncement ? -1 : 1;
+        return new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt);
+      }
       );
     } else if (sortBy === 'popular') {
       filtered = [...filtered].sort((a, b) => 
@@ -102,7 +159,8 @@ function DiscussionForum() {
       const response = await discussionsAPI.createThread(eventId, {
         title: newThread.title,
         content: newThread.content,
-        category: newThread.category
+        category: newThread.category,
+        isAnnouncement: newThread.category === 'Announcements'
       });
 
       if (response.success) {
@@ -126,7 +184,10 @@ function DiscussionForum() {
     }
 
     try {
-      const response = await discussionsAPI.reply(selectedThread._id || selectedThread.id, replyContent);
+      const response = await discussionsAPI.reply(selectedThread._id || selectedThread.id, {
+        content: replyContent,
+        parentReplyId: replyParentId || undefined
+      });
 
       if (response.success) {
         setDiscussions(prev =>
@@ -138,6 +199,7 @@ function DiscussionForum() {
         );
         setSelectedThread(response.data);
         setReplyContent('');
+        setReplyParentId(null);
         showSuccess('Reply added successfully');
       } else {
         showError(response.message || 'Failed to add reply');
@@ -181,6 +243,64 @@ function DiscussionForum() {
     }
   };
 
+  const handleDeleteReply = async (threadId, replyId) => {
+    if (!window.confirm('Delete this message?')) return;
+    try {
+      const response = await discussionsAPI.deleteReply(threadId, replyId);
+      if (response.success) {
+        setDiscussions(prev => prev.map(d => ((d._id || d.id) === threadId ? response.data : d)));
+        if (selectedThread && (selectedThread._id || selectedThread.id) === threadId) {
+          setSelectedThread(response.data);
+        }
+        showSuccess('Message deleted');
+      }
+    } catch (err) {
+      showError('Failed to delete message');
+    }
+  };
+
+  const handleReactThread = async (threadId, emoji) => {
+    try {
+      const response = await discussionsAPI.react(threadId, emoji);
+      if (response.success) {
+        setDiscussions(prev => prev.map(d => ((d._id || d.id) === threadId ? response.data : d)));
+        if (selectedThread && (selectedThread._id || selectedThread.id) === threadId) {
+          setSelectedThread(response.data);
+        }
+      }
+    } catch (err) {
+      showError('Failed to react to message');
+    }
+  };
+
+  const handleReactReply = async (threadId, replyId, emoji) => {
+    try {
+      const response = await discussionsAPI.reactToReply(threadId, replyId, emoji);
+      if (response.success) {
+        setDiscussions(prev => prev.map(d => ((d._id || d.id) === threadId ? response.data : d)));
+        if (selectedThread && (selectedThread._id || selectedThread.id) === threadId) {
+          setSelectedThread(response.data);
+        }
+      }
+    } catch (err) {
+      showError('Failed to react to reply');
+    }
+  };
+
+  const groupReactions = (reactions = []) => reactions.reduce((acc, reaction) => {
+    acc[reaction.emoji] = (acc[reaction.emoji] || 0) + 1;
+    return acc;
+  }, {});
+
+  const getThreadedReplies = (thread) => {
+    const replies = thread?.replies || [];
+    const roots = replies.filter(reply => !reply.parentReplyId);
+    return roots.map(root => ({
+      ...root,
+      children: replies.filter(child => child.parentReplyId && child.parentReplyId.toString() === (root._id || root.id).toString())
+    }));
+  };
+
   const openThread = (thread) => {
     setSelectedThread(thread);
   };
@@ -188,24 +308,39 @@ function DiscussionForum() {
   const organizerId = event.organizer?._id || event.organizer || event.organizerId;
   const isOrganizer = organizerId?.toString() === user?.id || user?.role === 'Admin';
 
+  const canCreateAnnouncement = isOrganizer;
+
+  const canDeleteReply = (reply) => {
+    const authorId = reply?.author?._id || reply?.author;
+    return isOrganizer || String(authorId) === String(user?.id);
+  };
+
   return (
     <div className="forum-container">
       <div className="forum-header">
         <div className="header-top">
-          <Link to={`/event/${eventId}`} className="btn-back">
-            ← Back to Event
-          </Link>
+          {!embedded && (
+            <Link to={`/event/${eventId}`} className="btn-back">
+              ← Back to Event
+            </Link>
+          )}
           <div className="header-info">
             <h1>💬 Discussion Forum</h1>
             <p className="event-title">{event.title}</p>
+            {newItemsCount > 0 && (
+              <p className="live-update-pill">{newItemsCount} new updates</p>
+            )}
           </div>
         </div>
-        <button 
-          className="btn btn-primary"
-          onClick={() => setShowNewThread(true)}
-        >
-          + New Discussion
-        </button>
+        <div className="forum-header-actions">
+          {isRefreshing && <span className="refresh-indicator">Refreshing…</span>}
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowNewThread(true)}
+          >
+            + New Discussion
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -263,6 +398,7 @@ function DiscussionForum() {
               onClick={() => openThread(thread)}
             >
               {thread.isPinned && <div className="pin-badge">📌 Pinned</div>}
+              {thread.isAnnouncement && <div className="announcement-badge">📢 Announcement</div>}
               <div className="thread-header">
                 <h3>{thread.title}</h3>
                 <span className={`category-badge ${thread.category.toLowerCase()}`}>
@@ -281,8 +417,24 @@ function DiscussionForum() {
                 </div>
                 <div className="thread-stats">
                   <span>👁️ {thread.views || thread.viewCount || 0}</span>
-                  <span>💬 {thread.replies?.length || 0} replies</span>
+                  <span>💬 {thread.replyCount || thread.replies?.length || 0} replies</span>
                 </div>
+              </div>
+
+              <div className="reaction-row" onClick={(e) => e.stopPropagation()}>
+                {REACTIONS.map((emoji) => {
+                  const counts = groupReactions(thread.reactions || []);
+                  return (
+                    <button
+                      key={`${thread._id || thread.id}-${emoji}`}
+                      type="button"
+                      className="reaction-btn"
+                      onClick={() => handleReactThread(thread._id || thread.id, emoji)}
+                    >
+                      {emoji} {counts[emoji] || 0}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           ))
@@ -302,9 +454,16 @@ function DiscussionForum() {
                 <label>Category</label>
                 <select 
                   value={newThread.category}
-                  onChange={(e) => setNewThread({ ...newThread, category: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === 'Announcements' && !canCreateAnnouncement) {
+                      showError('Only organizer/admin can post announcements');
+                      return;
+                    }
+                    setNewThread({ ...newThread, category: value });
+                  }}
                 >
-                  {categories.map(cat => (
+                  {categories.filter(cat => cat !== 'Announcements' || canCreateAnnouncement).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
@@ -368,6 +527,21 @@ function DiscussionForum() {
                   </div>
                 </div>
                 <div className="post-content">{selectedThread.content}</div>
+                <div className="reaction-row">
+                  {REACTIONS.map((emoji) => {
+                    const counts = groupReactions(selectedThread.reactions || []);
+                    return (
+                      <button
+                        key={`detail-${selectedThread._id || selectedThread.id}-${emoji}`}
+                        type="button"
+                        className="reaction-btn"
+                        onClick={() => handleReactThread(selectedThread._id || selectedThread.id, emoji)}
+                      >
+                        {emoji} {counts[emoji] || 0}
+                      </button>
+                    );
+                  })}
+                </div>
                 {isOrganizer && (
                   <div className="post-actions">
                     <button 
@@ -389,8 +563,8 @@ function DiscussionForum() {
               {/* Replies */}
               {selectedThread.replies && selectedThread.replies.length > 0 && (
                 <div className="replies-section">
-                  <h3>{selectedThread.replies.length} Replies</h3>
-                  {selectedThread.replies.map(reply => (
+                  <h3>{selectedThread.replyCount || selectedThread.replies.length} Replies</h3>
+                  {getThreadedReplies(selectedThread).map(reply => (
                     <div key={reply._id || reply.id} className="post reply-post">
                       <div className="post-author">
                         <div className="author-avatar">{getAuthorName(reply.author).charAt(0)}</div>
@@ -403,6 +577,82 @@ function DiscussionForum() {
                         </div>
                       </div>
                       <div className="post-content">{reply.content}</div>
+                      <div className="reaction-row">
+                        {REACTIONS.map((emoji) => {
+                          const counts = groupReactions(reply.reactions || []);
+                          return (
+                            <button
+                              key={`reply-${reply._id || reply.id}-${emoji}`}
+                              type="button"
+                              className="reaction-btn"
+                              onClick={() => handleReactReply(selectedThread._id || selectedThread.id, reply._id || reply.id, emoji)}
+                            >
+                              {emoji} {counts[emoji] || 0}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="post-actions reply-actions">
+                        <button
+                          className="btn-action"
+                          onClick={() => {
+                            setReplyParentId(reply._id || reply.id);
+                            setReplyContent(`@${getAuthorName(reply.author)} `);
+                          }}
+                        >
+                          Reply
+                        </button>
+                        {canDeleteReply(reply) && (
+                          <button
+                            className="btn-action danger"
+                            onClick={() => handleDeleteReply(selectedThread._id || selectedThread.id, reply._id || reply.id)}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+
+                      {(reply.children || []).length > 0 && (
+                        <div className="thread-children">
+                          {reply.children.map((child) => (
+                            <div key={child._id || child.id} className="post nested-reply-post">
+                              <div className="post-author">
+                                <div className="author-avatar">{getAuthorName(child.author).charAt(0)}</div>
+                                <div className="author-details">
+                                  <div className="author-name">{getAuthorName(child.author)}</div>
+                                  <div className="post-time">{formatDate(child.createdAt)}</div>
+                                </div>
+                              </div>
+                              <div className="post-content">{child.content}</div>
+                              <div className="reaction-row">
+                                {REACTIONS.map((emoji) => {
+                                  const counts = groupReactions(child.reactions || []);
+                                  return (
+                                    <button
+                                      key={`child-${child._id || child.id}-${emoji}`}
+                                      type="button"
+                                      className="reaction-btn"
+                                      onClick={() => handleReactReply(selectedThread._id || selectedThread.id, child._id || child.id, emoji)}
+                                    >
+                                      {emoji} {counts[emoji] || 0}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {canDeleteReply(child) && (
+                                <div className="post-actions reply-actions">
+                                  <button
+                                    className="btn-action danger"
+                                    onClick={() => handleDeleteReply(selectedThread._id || selectedThread.id, child._id || child.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -411,6 +661,14 @@ function DiscussionForum() {
               {/* Reply Form */}
               <div className="reply-form">
                 <h3>Add Reply</h3>
+                {replyParentId && (
+                  <p className="replying-context">
+                    Replying in thread
+                    <button type="button" className="btn-link-inline" onClick={() => setReplyParentId(null)}>
+                      cancel
+                    </button>
+                  </p>
+                )}
                 <textarea
                   placeholder="Write your reply..."
                   rows="4"

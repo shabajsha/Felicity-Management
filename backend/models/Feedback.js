@@ -69,17 +69,46 @@ feedbackSchema.index({ event: 1, rating: -1 });
 feedbackSchema.index({ createdAt: -1 });
 
 // Calculate average rating after save
-feedbackSchema.post('save', async function() {
+feedbackSchema.post('save', async function () {
   const Event = mongoose.model('Event');
   const feedbacks = await this.constructor.find({ event: this.event });
-  
+
   if (feedbacks.length > 0) {
     const avgRating = feedbacks.reduce((sum, fb) => sum + fb.rating, 0) / feedbacks.length;
     await Event.findByIdAndUpdate(this.event, {
       averageRating: avgRating.toFixed(1),
       totalFeedbacks: feedbacks.length
     });
+  } else {
+    await Event.findByIdAndUpdate(this.event, {
+      averageRating: 0,
+      totalFeedbacks: 0
+    });
   }
 });
+
+// Recalculate average rating after deletion
+const recalcRatingAfterDelete = async function (doc) {
+  if (!doc) return;
+  const Event = mongoose.model('Event');
+  const Feedback = mongoose.model('Feedback');
+  const feedbacks = await Feedback.find({ event: doc.event });
+
+  if (feedbacks.length > 0) {
+    const avgRating = feedbacks.reduce((sum, fb) => sum + fb.rating, 0) / feedbacks.length;
+    await Event.findByIdAndUpdate(doc.event, {
+      averageRating: avgRating.toFixed(1),
+      totalFeedbacks: feedbacks.length
+    });
+  } else {
+    await Event.findByIdAndUpdate(doc.event, {
+      averageRating: 0,
+      totalFeedbacks: 0
+    });
+  }
+};
+
+feedbackSchema.post('findOneAndDelete', recalcRatingAfterDelete);
+feedbackSchema.post('deleteOne', { document: true, query: false }, recalcRatingAfterDelete);
 
 module.exports = mongoose.model('Feedback', feedbackSchema);

@@ -162,6 +162,17 @@
   overflow: hidden;
 }
 
+.reset-requests-block {
+  margin-top: 2rem;
+}
+
+.filters-section.compact {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid #e5e5e5;
+}
+
 .users-table {
   width: 100%;
   border-collapse: collapse;

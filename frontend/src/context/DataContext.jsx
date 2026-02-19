@@ -59,9 +59,12 @@ export function DataProvider({ children }) {
               : event
           )
         );
+        return response.data;
       }
+      throw new Error(response?.message || 'Failed to update event');
     } catch (err) {
       console.error('Error updating event:', err);
+      throw err;
     }
   };
 

@@ -8,8 +8,11 @@ const {
   getSystemStats,
   getPendingEvents,
   getAllEvents,
+  getAllClubs,
   createOrganizer,
-  resetOrganizerPassword
+  resetOrganizerPassword,
+  getOrganizerPasswordResetRequests,
+  reviewOrganizerPasswordResetRequest
 } = require('../controllers/adminController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -26,6 +29,8 @@ router.put('/users/:id', updateUser);
 router.delete('/users/:id', deleteUser);
 router.put('/users/:id/promote', promoteToOrganizer);
 router.put('/users/:id/reset-password', resetOrganizerPassword);
+router.get('/password-reset-requests', getOrganizerPasswordResetRequests);
+router.put('/password-reset-requests/:id/review', reviewOrganizerPasswordResetRequest);
 router.post('/organizers', createOrganizer);
 
 // System statistics
@@ -34,5 +39,6 @@ router.get('/stats', getSystemStats);
 // Event management
 router.get('/events', getAllEvents);
 router.get('/pending-events', getPendingEvents);
+router.get('/clubs', getAllClubs);
 
 module.exports = router;

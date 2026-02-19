@@ -231,6 +231,12 @@
   margin-bottom: 0.75rem;
 }
 
+.field-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
 .field-preview-header label {
   margin: 0;
   font-size: 0.95rem;

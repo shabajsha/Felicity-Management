@@ -174,7 +174,9 @@ function ParticipantRegister() {
 
             <button type="submit" className="btn btn-primary full-width">Create Account</button>
           </form>
-
+          <div className="auth-footer">
+            <p>Already have an account? <a href="/login" className="link">Login here</a></p>
+          </div>
           <div className="auth-notes">
             <p><strong>Who can register?</strong> Only Participants. Organizers are provisioned by Admin. Admin account is backend-only.</p>
             <p>This is a frontend-only flow; in production, connect to backend signup API with bcrypt+JWT per requirements.</p>

@@ -3,15 +3,15 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
-import { registrationsAPI } from '../utils/api';
+import { registrationsAPI, eventsAPI } from '../utils/api';
 import { formatDate, getEventStatus } from '../utils/helpers';
 import { EVENT_STATUS } from '../utils/constants';
 import './ManageEventsPage.css';
 
 const ManageEventsPage = () => {
   const { user } = useAuth();
-  const { events, deleteEvent } = useData();
-  const { showSuccess } = useToast();
+  const { events, deleteEvent, updateEvent } = useData();
+  const { showSuccess, showError } = useToast();
 
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,6 +19,7 @@ const ManageEventsPage = () => {
   const [eventToDelete, setEventToDelete] = useState(null);
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [publishingIds, setPublishingIds] = useState([]);
 
   useEffect(() => {
     const load = async () => {
@@ -102,6 +103,29 @@ const ManageEventsPage = () => {
     }
   };
 
+  const handlePublishDraft = async (eventId) => {
+    try {
+      setPublishingIds(prev => [...prev, eventId]);
+      const response = await eventsAPI.publish(eventId);
+      if (!response.success) {
+        showError(response.message || 'Failed to publish event');
+        return;
+      }
+
+      try {
+        await updateEvent(eventId, { status: 'pending', lifecycleStatus: 'published' });
+      } catch {
+        // Local sync best-effort only
+      }
+
+      showSuccess('Draft submitted for approval successfully');
+    } catch (error) {
+      showError(error.message || 'Failed to publish event');
+    } finally {
+      setPublishingIds(prev => prev.filter(id => id !== eventId));
+    }
+  };
+
   const handleCancelDelete = () => {
     setShowDeleteModal(false);
     setEventToDelete(null);
@@ -118,6 +142,7 @@ const ManageEventsPage = () => {
     const eventId = event._id || event.id;
     const eventRegs = getEventRegistrations(eventId);
     const status = getEventStatus(event.date);
+    const reviewStatus = (event.status || '').toLowerCase();
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
     const confirmedCount = eventRegs.filter(r => r.status === 'confirmed').length;
 
@@ -170,6 +195,15 @@ const ManageEventsPage = () => {
                 Edit
               </Link>
             </>
+          )}
+          {reviewStatus === 'draft' && (
+            <button
+              className="btn-primary-small"
+              onClick={() => handlePublishDraft(eventId)}
+              disabled={publishingIds.includes(eventId)}
+            >
+              {publishingIds.includes(eventId) ? 'Publishing...' : 'Publish Draft'}
+            </button>
           )}
           <button
             onClick={() => handleDeleteClick(event)}

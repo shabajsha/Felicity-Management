@@ -2,6 +2,51 @@ const Feedback = require('../models/Feedback');
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 
+const isOrganizerOrAdminForEvent = (event, user) => {
+  if (!event || !user) return false;
+  return event.organizer?.toString() === user.id || user.role === 'Admin';
+};
+
+const buildFeedbackStats = (feedbacks) => {
+  const stats = {
+    totalFeedbacks: feedbacks.length,
+    averageRating: 0,
+    ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    categoryAverages: {
+      organization: 0,
+      content: 0,
+      venue: 0,
+      value: 0
+    }
+  };
+
+  if (feedbacks.length === 0) {
+    return stats;
+  }
+
+  stats.averageRating = Number(
+    (feedbacks.reduce((sum, fb) => sum + fb.rating, 0) / feedbacks.length).toFixed(1)
+  );
+
+  feedbacks.forEach((fb) => {
+    stats.ratingDistribution[fb.rating] += 1;
+    if (fb.categories) {
+      if (fb.categories.organization) stats.categoryAverages.organization += fb.categories.organization;
+      if (fb.categories.content) stats.categoryAverages.content += fb.categories.content;
+      if (fb.categories.venue) stats.categoryAverages.venue += fb.categories.venue;
+      if (fb.categories.value) stats.categoryAverages.value += fb.categories.value;
+    }
+  });
+
+  Object.keys(stats.categoryAverages).forEach((key) => {
+    if (stats.totalFeedbacks > 0) {
+      stats.categoryAverages[key] = Number((stats.categoryAverages[key] / stats.totalFeedbacks).toFixed(1));
+    }
+  });
+
+  return stats;
+};
+
 // @desc    Submit feedback for an event
 // @route   POST /api/feedback
 // @access  Private (Registered participants who attended)
@@ -79,57 +124,43 @@ exports.submitFeedback = async (req, res, next) => {
 // @access  Public
 exports.getEventFeedback = async (req, res, next) => {
   try {
-    const { sort = '-createdAt', minRating } = req.query;
+    const { sort = '-createdAt', minRating, rating } = req.query;
 
-    const query = { event: req.params.eventId, isPublished: true };
-    
+    const event = await Event.findById(req.params.eventId).select('organizer');
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    const canViewUnpublished = isOrganizerOrAdminForEvent(event, req.user);
+
+    const baseQuery = { event: req.params.eventId };
+    if (!canViewUnpublished) {
+      baseQuery.isPublished = true;
+    }
+
+    const filteredQuery = { ...baseQuery };
+
+    if (rating) {
+      filteredQuery.rating = Number(rating);
+    }
     if (minRating) {
-      query.rating = { $gte: parseInt(minRating) };
+      filteredQuery.rating = { ...(filteredQuery.rating ? { $eq: Number(rating) } : {}), $gte: parseInt(minRating, 10) };
     }
 
-    const feedbacks = await Feedback.find(query)
+    const [allFeedbacks, filteredFeedbacks] = await Promise.all([
+      Feedback.find(baseQuery).populate('user', 'firstName lastName'),
+      Feedback.find(filteredQuery)
       .populate('user', 'firstName lastName')
-      .sort(sort);
+      .sort(sort)
+    ]);
 
-    // Calculate statistics
-    const stats = {
-      totalFeedbacks: feedbacks.length,
-      averageRating: 0,
-      ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-      categoryAverages: {
-        organization: 0,
-        content: 0,
-        venue: 0,
-        value: 0
-      }
-    };
-
-    if (feedbacks.length > 0) {
-      stats.averageRating = (
-        feedbacks.reduce((sum, fb) => sum + fb.rating, 0) / feedbacks.length
-      ).toFixed(1);
-
-      feedbacks.forEach(fb => {
-        stats.ratingDistribution[fb.rating]++;
-        
-        if (fb.categories) {
-          if (fb.categories.organization) stats.categoryAverages.organization += fb.categories.organization;
-          if (fb.categories.content) stats.categoryAverages.content += fb.categories.content;
-          if (fb.categories.venue) stats.categoryAverages.venue += fb.categories.venue;
-          if (fb.categories.value) stats.categoryAverages.value += fb.categories.value;
-        }
-      });
-
-      // Calculate category averages
-      Object.keys(stats.categoryAverages).forEach(key => {
-        if (stats.categoryAverages[key] > 0) {
-          stats.categoryAverages[key] = (stats.categoryAverages[key] / feedbacks.length).toFixed(1);
-        }
-      });
-    }
+    const stats = buildFeedbackStats(allFeedbacks);
 
     // Hide user info for anonymous feedback
-    const sanitizedFeedbacks = feedbacks.map(fb => {
+    const sanitizedFeedbacks = filteredFeedbacks.map(fb => {
       const fbObj = fb.toObject();
       if (fb.isAnonymous) {
         fbObj.user = null;
@@ -139,8 +170,12 @@ exports.getEventFeedback = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      count: feedbacks.length,
+      count: sanitizedFeedbacks.length,
       stats,
+      appliedFilters: {
+        rating: rating ? Number(rating) : null,
+        minRating: minRating ? Number(minRating) : null
+      },
       data: sanitizedFeedbacks
     });
   } catch (error) {
@@ -314,6 +349,65 @@ exports.getMyFeedback = async (req, res, next) => {
       count: feedbacks.length,
       data: feedbacks
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Export feedback for organizer/admin analysis
+// @route   GET /api/feedback/event/:eventId/export
+// @access  Private (Organizer/Admin)
+exports.exportEventFeedback = async (req, res, next) => {
+  try {
+    const event = await Event.findById(req.params.eventId).select('title organizer');
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    if (!isOrganizerOrAdminForEvent(event, req.user)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to export feedback for this event' });
+    }
+
+    const { rating } = req.query;
+    const query = { event: req.params.eventId };
+    if (rating) {
+      query.rating = Number(rating);
+    }
+
+    const feedbacks = await Feedback.find(query)
+      .populate('user', 'firstName lastName email')
+      .sort('-createdAt');
+
+    const rows = [
+      ['submittedAt', 'rating', 'comment', 'isAnonymous', 'participantName', 'participantEmail', 'helpfulVotes']
+    ];
+
+    feedbacks.forEach((feedback) => {
+      const participantName = feedback.isAnonymous
+        ? 'Anonymous'
+        : `${feedback.user?.firstName || ''} ${feedback.user?.lastName || ''}`.trim();
+      const participantEmail = feedback.isAnonymous ? '' : (feedback.user?.email || '');
+      rows.push([
+        feedback.createdAt?.toISOString() || '',
+        String(feedback.rating || ''),
+        (feedback.comment || '').replace(/\r?\n/g, ' '),
+        feedback.isAnonymous ? 'Yes' : 'No',
+        participantName,
+        participantEmail,
+        String(feedback.helpful || 0)
+      ]);
+    });
+
+    const csv = rows
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    const safeTitle = (event.title || 'event').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const fileName = `${safeTitle || 'event'}-feedback.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.status(200).send(csv);
   } catch (error) {
     next(error);
   }

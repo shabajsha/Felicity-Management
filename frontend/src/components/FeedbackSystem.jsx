@@ -15,15 +15,21 @@ function FeedbackSystem() {
   const { showSuccess, showError } = useToast();
 
   const [feedbacks, setFeedbacks] = useState([]);
+  const [myFeedbacks, setMyFeedbacks] = useState([]);
+  const [stats, setStats] = useState({
+    totalFeedbacks: 0,
+    averageRating: 0,
+    ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    categoryAverages: { organization: 0, content: 0, venue: 0, value: 0 }
+  });
   const [loading, setLoading] = useState(true);
   const [registrations, setRegistrations] = useState([]);
+  const [ratingFilter, setRatingFilter] = useState('all');
+  const [exporting, setExporting] = useState(false);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [newFeedback, setNewFeedback] = useState({
     rating: 5,
-    category: 'Overall Experience',
-    title: '',
     comment: '',
-    wouldRecommend: true,
     anonymous: false
   });
 
@@ -31,9 +37,20 @@ function FeedbackSystem() {
     const fetchFeedback = async () => {
       try {
         setLoading(true);
-        const response = await feedbackAPI.getEventFeedback(eventId);
+        const params = {};
+        if (ratingFilter !== 'all') {
+          params.rating = ratingFilter;
+        }
+
+        const response = await feedbackAPI.getEventFeedback(eventId, params);
         if (response.success) {
           setFeedbacks(response.data || []);
+          setStats(response.stats || {
+            totalFeedbacks: 0,
+            averageRating: 0,
+            ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+            categoryAverages: { organization: 0, content: 0, venue: 0, value: 0 }
+          });
         }
       } catch (err) {
         console.error('Error fetching feedback:', err);
@@ -43,7 +60,7 @@ function FeedbackSystem() {
     };
 
     fetchFeedback();
-  }, [eventId]);
+  }, [eventId, ratingFilter]);
 
   useEffect(() => {
     const fetchRegistrations = async () => {
@@ -62,15 +79,30 @@ function FeedbackSystem() {
     }
   }, [user]);
 
+  useEffect(() => {
+    const fetchMyFeedback = async () => {
+      if (!user) return;
+      try {
+        const response = await feedbackAPI.getMyFeedback();
+        if (response.success) {
+          setMyFeedbacks(response.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching my feedback:', err);
+      }
+    };
+
+    fetchMyFeedback();
+  }, [user]);
+
   const event = events.find(e => (e._id || e.id) === eventId);
+  const organizerId = event?.organizer?._id || event?.organizer || event?.organizerId;
+  const isOrganizerView = user?.role === 'Admin' || (organizerId && organizerId.toString() === user?.id?.toString());
   const userRegistration = registrations.find(
-    r => (r.event?._id || r.eventId || r.event) === eventId
+    r => (r.event?._id || r.eventId || r.event)?.toString() === eventId?.toString()
   );
 
-  const eventFeedbacks = useMemo(() => {
-    // API already filters by eventId, filter out anonymous ones for display
-    return feedbacks.filter(f => !f.isAnonymous);
-  }, [feedbacks]);
+  const eventFeedbacks = useMemo(() => feedbacks, [feedbacks]);
 
   const getAuthorName = (feedback) => {
     if (!feedback.user) return 'Anonymous';
@@ -88,28 +120,26 @@ function FeedbackSystem() {
   ];
 
   const averageRating = useMemo(() => {
-    if (feedbacks.length === 0) return 0;
-    const sum = feedbacks.reduce((acc, f) => acc + f.rating, 0);
-    return (sum / feedbacks.length).toFixed(1);
-  }, [feedbacks]);
+    return Number(stats.averageRating || 0).toFixed(1);
+  }, [stats]);
 
   const ratingDistribution = useMemo(() => {
     const distribution = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
-    feedbacks.forEach(f => {
-      distribution[f.rating]++;
+    Object.entries(stats.ratingDistribution || {}).forEach(([key, value]) => {
+      distribution[key] = value;
     });
     return distribution;
-  }, [feedbacks]);
+  }, [stats]);
 
   const totalFeedbacks = useMemo(() => {
-    return feedbacks.length;
-  }, [feedbacks]);
+    return Number(stats.totalFeedbacks || 0);
+  }, [stats]);
 
   const recommendationRate = useMemo(() => {
-    if (feedbacks.length === 0) return 0;
-    const recommended = feedbacks.filter(f => f.rating >= 4).length;
-    return ((recommended / feedbacks.length) * 100).toFixed(0);
-  }, [feedbacks]);
+    if (!totalFeedbacks) return 0;
+    const recommended = Number(ratingDistribution[5] || 0) + Number(ratingDistribution[4] || 0);
+    return ((recommended / totalFeedbacks) * 100).toFixed(0);
+  }, [ratingDistribution, totalFeedbacks]);
 
   if (!event) {
     return (
@@ -125,14 +155,16 @@ function FeedbackSystem() {
   }
 
   const hasUserSubmittedFeedback = feedbacks.some(
-    f => f.user?._id === user?.id
+    f => (f.user?._id || f.user)?.toString() === user?.id?.toString()
+  ) || myFeedbacks.some(
+    f => (f.event?._id || f.eventId || f.event)?.toString() === eventId?.toString()
   );
 
   const canSubmitFeedback =
     userRegistration && userRegistration.status === 'confirmed' && userRegistration.checkedIn;
 
   const handleSubmitFeedback = async () => {
-    if (!newFeedback.title.trim() || !newFeedback.comment.trim()) {
+    if (!newFeedback.comment.trim()) {
       showError('Please fill in all required fields');
       return;
     }
@@ -154,10 +186,7 @@ function FeedbackSystem() {
         setFeedbacks(prev => [response.data, ...prev]);
         setNewFeedback({
           rating: 5,
-          category: 'Overall Experience',
-          title: '',
           comment: '',
-          wouldRecommend: true,
           anonymous: false
         });
         setShowFeedbackForm(false);
@@ -182,6 +211,30 @@ function FeedbackSystem() {
       }
     } catch (err) {
       showError('Failed to mark helpful');
+    }
+  };
+
+  const handleExport = async () => {
+    try {
+      setExporting(true);
+      const params = {};
+      if (ratingFilter !== 'all') {
+        params.rating = ratingFilter;
+      }
+      const { blob, fileName } = await feedbackAPI.exportEventFeedback(eventId, params);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showSuccess('Feedback exported successfully');
+    } catch (error) {
+      showError(error.message || 'Failed to export feedback');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -256,7 +309,24 @@ function FeedbackSystem() {
 
       {/* Feedback List */}
       <div className="feedbacks-section">
-        <h2>Participant Reviews</h2>
+        <div className="feedback-list-header">
+          <h2>Participant Reviews</h2>
+          {isOrganizerView && (
+            <div className="feedback-actions-row">
+              <select value={ratingFilter} onChange={(e) => setRatingFilter(e.target.value)}>
+                <option value="all">All Ratings</option>
+                <option value="5">5 Stars</option>
+                <option value="4">4 Stars</option>
+                <option value="3">3 Stars</option>
+                <option value="2">2 Stars</option>
+                <option value="1">1 Star</option>
+              </select>
+              <button className="btn btn-secondary" onClick={handleExport} disabled={exporting}>
+                {exporting ? 'Exporting...' : 'Export Feedback CSV'}
+              </button>
+            </div>
+          )}
+        </div>
         
         {eventFeedbacks.length === 0 ? (
           <div className="empty-state">
@@ -287,6 +357,7 @@ function FeedbackSystem() {
 
                 <div className="feedback-category">
                   <span className="category-tag">Overall Experience</span>
+                  {feedback.isAnonymous && <span className="category-tag">Anonymous</span>}
                 </div>
 
                 <p className="feedback-comment">{feedback.comment}</p>
@@ -333,25 +404,8 @@ function FeedbackSystem() {
               </div>
 
               <div className="form-group">
-                <label>Category</label>
-                <select 
-                  value={newFeedback.category}
-                  onChange={(e) => setNewFeedback({ ...newFeedback, category: e.target.value })}
-                >
-                  {categories.map(cat => (
-                    <option key={cat} value={cat}>{cat}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Review Title</label>
-                <input
-                  type="text"
-                  placeholder="Summarize your experience..."
-                  value={newFeedback.title}
-                  onChange={(e) => setNewFeedback({ ...newFeedback, title: e.target.value })}
-                />
+                <label>Feedback Type</label>
+                <input type="text" value={categories[0]} disabled />
               </div>
 
               <div className="form-group">
@@ -362,17 +416,6 @@ function FeedbackSystem() {
                   value={newFeedback.comment}
                   onChange={(e) => setNewFeedback({ ...newFeedback, comment: e.target.value })}
                 />
-              </div>
-
-              <div className="form-group checkbox-group">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={newFeedback.wouldRecommend}
-                    onChange={(e) => setNewFeedback({ ...newFeedback, wouldRecommend: e.target.checked })}
-                  />
-                  I would recommend this event to others
-                </label>
               </div>
 
               <div className="form-group checkbox-group">

@@ -35,6 +35,17 @@ function ClubDetailPage() {
     fetchClub();
   }, [id]);
 
+  const organizerEvents = useMemo(() => {
+    if (!club?._id) return [];
+    return events.filter((eventItem) => {
+      const eventClubId = eventItem.clubId?._id || eventItem.clubId;
+      return String(eventClubId) === String(club._id);
+    });
+  }, [events, club]);
+
+  const upcomingEvents = organizerEvents.filter(e => new Date(e.date) >= new Date());
+  const pastEvents = organizerEvents.filter(e => new Date(e.date) < new Date());
+
   if (loading) {
     return (
       <div className="club-detail-page">
@@ -57,13 +68,6 @@ function ClubDetailPage() {
     );
   }
 
-  const organizerEvents = useMemo(
-    () => events.filter(e => (e.clubId || e.clubId?._id) === club?._id),
-    [events, club]
-  );
-  const upcomingEvents = organizerEvents.filter(e => new Date(e.date) >= new Date());
-  const pastEvents = organizerEvents.filter(e => new Date(e.date) < new Date());
-
   const handleFollowToggle = async () => {
     if (!user) return;
 
@@ -73,6 +77,10 @@ function ClubDetailPage() {
 
     const result = await updateProfile({ followedClubs: updatedClubs });
     if (result.success) {
+      const refreshedClub = await clubsAPI.getById(id);
+      if (refreshedClub.success) {
+        setClub(refreshedClub.data || null);
+      }
       showSuccess(isFollowing ? 'Unfollowed club' : 'Following club');
     } else {
       showError(result.error || 'Failed to update followed clubs');

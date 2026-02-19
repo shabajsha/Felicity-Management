@@ -4,9 +4,12 @@ const {
   getEventDiscussions,
   getDiscussion,
   replyToDiscussion,
+  deleteReply,
   updateDiscussion,
   deleteDiscussion,
-  togglePin
+  togglePin,
+  reactToDiscussion,
+  reactToReply
 } = require('../controllers/discussionController');
 const { protect, authorize } = require('../middleware/auth');
 
@@ -19,6 +22,9 @@ router.get('/:id', getDiscussion);
 // Protected routes (registered participants)
 router.post('/', protect, createDiscussion);
 router.post('/:id/reply', protect, replyToDiscussion);
+router.delete('/:id/replies/:replyId', protect, deleteReply);
+router.put('/:id/react', protect, reactToDiscussion);
+router.put('/:id/replies/:replyId/react', protect, reactToReply);
 router.put('/:id', protect, updateDiscussion);
 router.delete('/:id', protect, deleteDiscussion);
 

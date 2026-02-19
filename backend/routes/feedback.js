@@ -2,6 +2,7 @@ const express = require('express');
 const {
   submitFeedback,
   getEventFeedback,
+  exportEventFeedback,
   getFeedback,
   updateFeedback,
   deleteFeedback,
@@ -13,7 +14,8 @@ const { protect } = require('../middleware/auth');
 const router = express.Router();
 
 // Public routes
-router.get('/event/:eventId', getEventFeedback);
+router.get('/event/:eventId', protect, getEventFeedback);
+router.get('/event/:eventId/export', protect, exportEventFeedback);
 
 // Protected routes
 router.post('/', protect, submitFeedback);

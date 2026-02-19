@@ -39,6 +39,11 @@ const registrationSchema = new mongoose.Schema({
     enum: ['pending', 'paid', 'failed', 'free', 'refunded'],
     default: 'pending'
   },
+  paymentApprovalStatus: {
+    type: String,
+    enum: ['awaiting-proof', 'pending', 'approved', 'rejected', 'not-required'],
+    default: 'not-required'
+  },
   paymentAmount: {
     type: Number,
     default: 0
@@ -82,6 +87,10 @@ const registrationSchema = new mongoose.Schema({
     email: String,
     phone: String
   }],
+  team: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Team'
+  },
   customFieldResponses: {
     type: Map,
     of: mongoose.Schema.Types.Mixed

@@ -85,6 +85,18 @@
   padding: 3rem;
 }
 
+.event-image-wrapper {
+  margin-bottom: 2rem;
+}
+
+.event-image {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--color-border);
+}
+
 .info-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -208,6 +220,19 @@
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.event-discussion-section {
+  width: 100%;
+  margin-top: 1.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.event-discussion-section .forum-container {
+  max-width: 100%;
+  padding: 1.5rem;
 }
 
 .action-buttons .btn {

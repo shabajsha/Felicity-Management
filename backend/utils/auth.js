@@ -10,7 +10,7 @@ exports.generateToken = (id) => {
 // Send token response
 exports.sendTokenResponse = (user, statusCode, res) => {
   // Create token
-  const token = this.generateToken(user._id);
+  const token = exports.generateToken(user._id);
 
   res.status(statusCode).json({
     success: true,

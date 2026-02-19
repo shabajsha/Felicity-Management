@@ -2,9 +2,35 @@ const User = require('../models/User');
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const Club = require('../models/Club');
+const PasswordResetRequest = require('../models/PasswordResetRequest');
+const { sendOrganizerProvisionMail, sendOrganizerResetMail } = require('../utils/mailer');
 
 // Helper: generate a simple random password
 const generatePassword = () => `Org@${Math.random().toString(36).slice(2, 8)}`;
+
+const slugifyEmail = (value) => {
+  if (!value) return 'organizer';
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'organizer';
+};
+
+const generateOrganizerEmail = async (base, domain = 'eventhub.local') => {
+  const baseSlug = slugifyEmail(base);
+  let attempt = 0;
+
+  while (attempt < 50) {
+    const suffix = attempt === 0 ? '' : `-${attempt}`;
+    const candidate = `${baseSlug}${suffix}@${domain}`;
+    // eslint-disable-next-line no-await-in-loop
+    const exists = await User.findOne({ email: candidate });
+    if (!exists) return candidate;
+    attempt += 1;
+  }
+
+  return `${baseSlug}-${Date.now()}@${domain}`;
+};
 
 // @desc    Get all users
 // @route   GET /api/admin/users
@@ -145,9 +171,13 @@ exports.deleteUser = async (req, res, next) => {
       });
     }
 
-    // Soft delete - deactivate user
-    user.isActive = false;
-    await user.save();
+    if (req.query.permanent === 'true') {
+      await user.deleteOne();
+    } else {
+      // Soft delete - deactivate user
+      user.isActive = false;
+      await user.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -158,11 +188,21 @@ exports.deleteUser = async (req, res, next) => {
   }
 };
 
-// @desc    Promote user to organizer
+// @desc    Promote user to organizer (DEPRECATED - Use createOrganizer instead)
 // @route   PUT /api/admin/users/:id/promote
 // @access  Private (Admin only)
+// @note    This endpoint violates the requirement that "Organizer accounts are provisioned by Admin"
+//          Organizers should be created fresh using POST /api/admin/organizers, not promoted from participants
 exports.promoteToOrganizer = async (req, res, next) => {
   try {
+    // This functionality is disabled per assignment requirements
+    // Organizer accounts must be provisioned (created fresh), not promoted from existing participants
+    return res.status(403).json({
+      success: false,
+      message: 'Promoting participants to organizers is not allowed. Use POST /api/admin/organizers to create new organizer accounts.'
+    });
+
+    /* DISABLED CODE - Keep for reference but do not use
     const user = await User.findById(req.params.id);
 
     if (!user) {
@@ -187,6 +227,7 @@ exports.promoteToOrganizer = async (req, res, next) => {
       message: 'User promoted to Organizer',
       data: user
     });
+    */
   } catch (error) {
     next(error);
   }
@@ -320,9 +361,34 @@ exports.getPendingEvents = async (req, res, next) => {
   }
 };
 
+// @desc    Get all clubs (admin only)
+// @route   GET /api/admin/clubs
+// @access  Private (Admin only)
+exports.getAllClubs = async (req, res, next) => {
+  try {
+    const clubs = await Club.find()
+      .populate('headCoordinator', 'firstName lastName email')
+      .populate('members', 'firstName lastName email')
+      .populate('organizers', 'firstName lastName email')
+      .sort('name');
+
+    res.status(200).json({
+      success: true,
+      count: clubs.length,
+      data: clubs
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Create an organizer account (admin provisioned)
 // @route   POST /api/admin/organizers
 // @access  Private (Admin only)
+// @note    This is the ONLY way to create organizer accounts per assignment requirements
+//          - No self-registration for organizers
+//          - Admin creates account and provides credentials to organizer
+//          - Generated password is returned to admin to share with organizer
 exports.createOrganizer = async (req, res, next) => {
   try {
     const {
@@ -337,18 +403,26 @@ exports.createOrganizer = async (req, res, next) => {
       contactPhone
     } = req.body;
 
+    const trimmedEmail = (email || '').trim();
+    let finalEmail = trimmedEmail ? trimmedEmail.toLowerCase() : '';
+    if (!finalEmail) {
+      const base = organizerName || `${firstName} ${lastName}`;
+      finalEmail = await generateOrganizerEmail(base);
+    }
+
     // Basic uniqueness check
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    const existing = await User.findOne({ email: finalEmail });
     if (existing) {
       return res.status(400).json({ success: false, message: 'Email already in use' });
     }
 
+    // Generate secure random password
     const password = generatePassword();
 
     const user = await User.create({
       firstName,
       lastName,
-      email: email.toLowerCase(),
+      email: finalEmail,
       contactNumber,
       role: 'Organizer',
       password,
@@ -356,23 +430,173 @@ exports.createOrganizer = async (req, res, next) => {
         name: organizerName || `${firstName} ${lastName}`,
         category,
         description,
-        contactEmail: contactEmail || email,
+        contactEmail: contactEmail || finalEmail,
         contactNumber: contactPhone || contactNumber
       }
     });
 
+    await sendOrganizerProvisionMail({
+      to: user.email,
+      organizerName: user.organizerProfile?.name || `${user.firstName} ${user.lastName}`.trim(),
+      password
+    });
+
     res.status(201).json({
       success: true,
+      message: 'Organizer account created successfully. Share these credentials with the organizer.',
       data: {
         id: user._id,
         email: user.email,
         role: user.role,
+        firstName: user.firstName,
+        lastName: user.lastName,
         organizerProfile: user.organizerProfile
       },
       credentials: {
         email: user.email,
-        password
+        password,
+        note: 'Share these credentials securely with the organizer. They cannot be retrieved later.'
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get organizer password reset requests
+// @route   GET /api/admin/password-reset-requests
+// @access  Private (Admin)
+exports.getOrganizerPasswordResetRequests = async (req, res, next) => {
+  try {
+    const { status = 'all' } = req.query;
+
+    const query = {};
+    if (status !== 'all') {
+      query.status = status;
+    }
+
+    const requests = await PasswordResetRequest.find(query)
+      .populate('organizer', 'firstName lastName email organizerProfile clubId')
+      .populate('organizer.clubId', 'name')
+      .populate('resolvedBy', 'firstName lastName email')
+      .populate('history.changedBy', 'firstName lastName email')
+      .sort('-requestedAt');
+
+    const data = requests.map((request) => {
+      const organizer = request.organizer || {};
+      const clubName = organizer.clubId?.name || organizer.organizerProfile?.name || 'N/A';
+      return {
+        ...request.toObject(),
+        organizerMeta: {
+          clubName,
+          organizerName: `${organizer.firstName || ''} ${organizer.lastName || ''}`.trim(),
+          organizerEmail: organizer.email || ''
+        }
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      data
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Review organizer password reset request (approve/reject)
+// @route   PUT /api/admin/password-reset-requests/:id/review
+// @access  Private (Admin)
+exports.reviewOrganizerPasswordResetRequest = async (req, res, next) => {
+  try {
+    const { action, comment = '' } = req.body;
+    const normalizedAction = String(action || '').trim().toLowerCase();
+
+    if (!['approve', 'reject'].includes(normalizedAction)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Action must be approve or reject'
+      });
+    }
+
+    const request = await PasswordResetRequest.findById(req.params.id)
+      .populate('organizer', 'firstName lastName email organizerProfile');
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Password reset request not found'
+      });
+    }
+
+    if (request.status !== 'Pending') {
+      return res.status(400).json({
+        success: false,
+        message: `Request already ${request.status.toLowerCase()}`
+      });
+    }
+
+    const previousStatus = request.status;
+    request.adminComment = String(comment || '').trim();
+    request.resolvedBy = req.user.id;
+    request.resolvedAt = new Date();
+
+    let credentials = null;
+
+    if (normalizedAction === 'approve') {
+      const user = await User.findById(request.organizer._id).select('+password');
+      if (!user || user.role !== 'Organizer') {
+        return res.status(400).json({
+          success: false,
+          message: 'Associated organizer account not found'
+        });
+      }
+
+      const password = generatePassword();
+      user.password = password;
+      await user.save();
+
+      await sendOrganizerResetMail({
+        to: user.email,
+        organizerName: user.organizerProfile?.name || `${user.firstName} ${user.lastName}`.trim(),
+        password
+      });
+
+      request.generatedPassword = password;
+      request.status = 'Approved';
+      credentials = {
+        email: user.email,
+        password
+      };
+    } else {
+      request.generatedPassword = '';
+      request.status = 'Rejected';
+    }
+
+    request.history.push({
+      fromStatus: previousStatus,
+      toStatus: request.status,
+      comment: request.adminComment,
+      changedBy: req.user.id,
+      changedAt: new Date()
+    });
+
+    await request.save();
+
+    const updated = await PasswordResetRequest.findById(request._id)
+      .populate('organizer', 'firstName lastName email organizerProfile clubId')
+      .populate('organizer.clubId', 'name')
+      .populate('resolvedBy', 'firstName lastName email')
+      .populate('history.changedBy', 'firstName lastName email');
+
+    res.status(200).json({
+      success: true,
+      message: normalizedAction === 'approve'
+        ? 'Password reset request approved and new password generated'
+        : 'Password reset request rejected',
+      data: updated,
+      credentials
     });
   } catch (error) {
     next(error);
@@ -382,6 +606,9 @@ exports.createOrganizer = async (req, res, next) => {
 // @desc    Reset organizer password (admin only)
 // @route   PUT /api/admin/users/:id/reset-password
 // @access  Private (Admin only)
+// @note    This is the ONLY way for organizers to reset their password
+//          Organizers must request password reset through admin (email, support ticket, etc.)
+//          Organizers CANNOT use the /api/auth/updatepassword endpoint
 exports.resetOrganizerPassword = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).select('+password');
@@ -396,19 +623,29 @@ exports.resetOrganizerPassword = async (req, res, next) => {
     if (user.role !== 'Organizer') {
       return res.status(400).json({
         success: false,
-        message: 'Password reset is only supported for organizers'
+        message: 'This endpoint is only for organizer password resets. Participants can use /api/auth/updatepassword'
       });
     }
 
+    // Generate new random password
     const password = generatePassword();
     user.password = password;
     await user.save();
 
+    await sendOrganizerResetMail({
+      to: user.email,
+      organizerName: user.organizerProfile?.name || `${user.firstName} ${user.lastName}`.trim(),
+      password
+    });
+
     res.status(200).json({
       success: true,
+      message: 'Password reset successful. New credentials generated.',
       data: {
         id: user._id,
-        email: user.email
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName
       },
       credentials: {
         email: user.email,

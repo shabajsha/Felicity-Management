@@ -2,6 +2,21 @@ const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const User = require('../models/User');
 const { postEventToDiscord } = require('../utils/discord');
+const { normalizeEligibility } = require('../utils/eligibility');
+
+const getEligibilityAliases = (eligibility) => {
+  const normalized = normalizeEligibility(eligibility);
+
+  if (normalized === 'All') {
+    return ['All', 'Both', 'IIIT+External', 'IIIT & External', 'IIIT and External'];
+  }
+
+  if (normalized === 'IIIT') {
+    return ['IIIT', 'IIIT Only'];
+  }
+
+  return ['Non-IIIT', 'External', 'External Only', 'Non-IIIT Only'];
+};
 
 const computeLifecycleStatus = (event) => {
   if (event.isClosed) return 'closed';
@@ -34,7 +49,7 @@ exports.createEvent = async (req, res, next) => {
     const publishNow = Boolean(req.body.publishNow);
 
     req.body.status = publishNow ? 'pending' : 'draft';
-    req.body.lifecycleStatus = publishNow ? 'published' : 'draft';
+    req.body.lifecycleStatus = 'draft';
     // Ensure organizerName is set from user profile if not provided
     if (!req.body.organizerName && req.user) {
       const name = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
@@ -129,9 +144,15 @@ exports.getEvents = async (req, res, next) => {
 
     // Filter by eligibility
     if (reqQuery.eligibility) {
-      queryObj.eligibility = reqQuery.eligibility;
+      queryObj.eligibility = { $in: getEligibilityAliases(reqQuery.eligibility) };
     } else if (req.user && req.user.role === 'Participant') {
-      queryObj.eligibility = { $in: ['All', req.user.participantType === 'IIIT' ? 'IIIT' : 'Non-IIIT'] };
+      const participantEligibility = req.user.participantType === 'IIIT' ? 'IIIT' : 'Non-IIIT';
+      queryObj.eligibility = {
+        $in: [
+          ...getEligibilityAliases('All'),
+          ...getEligibilityAliases(participantEligibility)
+        ]
+      };
     }
 
     // Filter by organizer
@@ -192,6 +213,44 @@ exports.getEvents = async (req, res, next) => {
 
     // Execute query
     let events = await query;
+
+    // Apply preference-based ordering if user is authenticated and has preferences
+    if (req.user && req.user.preferences && !reqQuery.trending && !req.query.sort) {
+      const userInterests = req.user.preferences.interests || [];
+      const userFollowedClubs = (req.user.preferences.followedClubs || []).map(club =>
+        typeof club === 'object' ? club._id.toString() : club.toString()
+      );
+
+      // Score each event based on user preferences
+      events = events.map(event => {
+        let score = 0;
+
+        // +2 points if event is from a followed club
+        if (event.clubId && userFollowedClubs.includes(event.clubId.toString())) {
+          score += 2;
+        }
+
+        // +1 point for each matching interest tag
+        if (event.tags && Array.isArray(event.tags)) {
+          const matchingTags = event.tags.filter(tag =>
+            userInterests.some(interest =>
+              interest.toLowerCase() === tag.toLowerCase() ||
+              tag.toLowerCase().includes(interest.toLowerCase()) ||
+              interest.toLowerCase().includes(tag.toLowerCase())
+            )
+          );
+          score += matchingTags.length;
+        }
+
+        return { event, score };
+      })
+        .sort((a, b) => {
+          // Sort by score (descending), then by date (ascending)
+          if (b.score !== a.score) return b.score - a.score;
+          return new Date(a.event.date) - new Date(b.event.date);
+        })
+        .map(item => item.event);
+    }
 
     // Trending (top 5 in last 24h)
     if (reqQuery.trending === 'true') {
@@ -316,6 +375,34 @@ exports.updateEvent = async (req, res, next) => {
             success: false,
             message: 'Only description, deadline, capacity, or closing is allowed after publish'
           });
+        }
+
+        if (req.body.capacity !== undefined || req.body.maxParticipants !== undefined) {
+          const currentCap = Math.max(event.capacity || 0, event.maxParticipants || 0);
+          const nextCap = Number(
+            req.body.capacity !== undefined
+              ? req.body.capacity
+              : req.body.maxParticipants !== undefined
+                ? req.body.maxParticipants
+                : currentCap
+          );
+          if (!Number.isNaN(nextCap) && nextCap < currentCap) {
+            return res.status(400).json({
+              success: false,
+              message: 'Capacity can only be increased after publish'
+            });
+          }
+        }
+
+        if (req.body.registrationDeadline && event.registrationDeadline) {
+          const currentDeadline = new Date(event.registrationDeadline);
+          const nextDeadline = new Date(req.body.registrationDeadline);
+          if (nextDeadline < currentDeadline) {
+            return res.status(400).json({
+              success: false,
+              message: 'Registration deadline can only be extended after publish'
+            });
+          }
         }
       }
 

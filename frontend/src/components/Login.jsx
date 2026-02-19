@@ -1,15 +1,15 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from './Toast.jsx';
-import { USER_ROLES, PARTICIPANT_TYPES } from '../utils/constants';
-import { isValidEmail, isIIITEmail } from '../utils/helpers';
+import { USER_ROLES } from '../utils/constants';
+import { isValidEmail } from '../utils/helpers';
 import './Login.css';
 
 const ROLE_REDIRECT = {
   [USER_ROLES.PARTICIPANT]: '/dashboard',
-  [USER_ROLES.ORGANIZER]: '/create',
-  [USER_ROLES.ADMIN]: '/',
+  [USER_ROLES.ORGANIZER]: '/organizer/dashboard',
+  [USER_ROLES.ADMIN]: '/admin/dashboard',
 };
 
 function Login() {
@@ -18,8 +18,6 @@ function Login() {
   const location = useLocation();
   const { showSuccess, showError } = useToast();
 
-  const [role, setRole] = useState(USER_ROLES.PARTICIPANT);
-  const [participantType, setParticipantType] = useState(PARTICIPANT_TYPES.IIIT);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -31,12 +29,6 @@ function Login() {
 
     if (!isValidEmail(email)) {
       return 'Please enter a valid email address';
-    }
-
-    if (role === USER_ROLES.PARTICIPANT && participantType === PARTICIPANT_TYPES.IIIT) {
-      if (!isIIITEmail(email)) {
-        return 'IIIT participants must use their IIIT email (@iiit.ac.in)';
-      }
     }
 
     return '';
@@ -52,10 +44,10 @@ function Login() {
 
     // Call backend API
     const result = await login({ email, password });
-    
+
     if (result.success) {
       showSuccess(`Welcome back!`);
-      
+
       // Redirect based on user role
       const userRole = result.user?.role || USER_ROLES.PARTICIPANT;
       const hasPrefs = (result.user?.preferences?.interests?.length || 0) > 0
@@ -68,7 +60,7 @@ function Login() {
       setError(result.error || 'Invalid credentials');
       showError('Login failed. Please check your credentials.');
     }
-    
+
     // Clear password from state
     setPassword('');
   };
@@ -78,50 +70,9 @@ function Login() {
       <div className="container auth-container">
         <div className="auth-card">
           <h1>Sign in</h1>
-          <p className="muted">Choose your role and login to continue.</p>
+          <p className="muted">Enter your credentials to continue. Your role is automatically determined by your account.</p>
 
           <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label>Role</label>
-              <div className="role-options">
-                {Object.values(USER_ROLES).map((option) => (
-                  <label key={option} className={`pill ${role === option ? 'selected' : ''}`}>
-                    <input
-                      type="radio"
-                      name="role"
-                      value={option}
-                      checked={role === option}
-                      onChange={() => setRole(option)}
-                    />
-                    {option}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {role === USER_ROLES.PARTICIPANT && (
-              <div className="form-group">
-                <label>Participant Type</label>
-                <div className="role-options">
-                  {Object.values(PARTICIPANT_TYPES).map((option) => (
-                    <label key={option} className={`pill ${participantType === option ? 'selected' : ''}`}>
-                      <input
-                        type="radio"
-                        name="participantType"
-                        value={option}
-                        checked={participantType === option}
-                        onChange={() => setParticipantType(option)}
-                      />
-                      {option}
-                    </label>
-                  ))}
-                </div>
-                {participantType === PARTICIPANT_TYPES.IIIT && (
-                  <p className="hint">IIIT participants must login with institute email only.</p>
-                )}
-              </div>
-            )}
-
             <div className="form-group">
               <label>Email</label>
               <input
@@ -149,11 +100,15 @@ function Login() {
             <button type="submit" className="btn btn-primary full-width">Login</button>
           </form>
 
+          <div className="auth-footer">
+            <p>Don't have an account? <Link to="/register" className="link">Register as Participant</Link></p>
+          </div>
+
           <div className="auth-notes">
-            <p><strong>Test Credentials:</strong></p>
-            <p>Participant: participant@iiit.ac.in / password123</p>
-            <p>Organizer: organizer@iiit.ac.in / password123</p>
-            <p>Admin: admin@iiit.ac.in / admin123</p>
+            <p><strong>Note:</strong></p>
+            <p>• Your role (Participant/Organizer/Admin) is determined by your account</p>
+            <p>• IIIT participants should use their @iiit.ac.in email</p>
+            <p>• Only participants can self-register. Contact admin for organizer accounts.</p>
           </div>
         </div>
       </div>

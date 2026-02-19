@@ -192,6 +192,11 @@
   color: #2e7d32;
 }
 
+.payment-status.status-approved {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
 .payment-status.status-rejected {
   background: #ffebee;
   color: #c62828;

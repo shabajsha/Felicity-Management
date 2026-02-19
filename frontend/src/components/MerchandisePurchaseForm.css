@@ -19,6 +19,18 @@
   margin-bottom: 12px;
 }
 
+.merch-form .field-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.merch-form .option-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .merch-form .form-actions {
   display: flex;
   justify-content: flex-end;

@@ -158,47 +158,35 @@ export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
   REGISTER: '/register',
-  
+
   // Participant Routes
   DASHBOARD: '/dashboard',
+  ONBOARDING: '/onboarding',
   BROWSE_EVENTS: '/events',
   EVENT_DETAILS: '/event/:id',
   CLUBS: '/clubs',
   CLUB_DETAILS: '/club/:id',
   PROFILE: '/profile',
-  
+  TICKET: '/ticket/:id',
+  TEAMS: '/dashboard/teams',
+
   // Organizer Routes
   ORGANIZER_DASHBOARD: '/organizer/dashboard',
-  CREATE_EVENT: '/organizer/create-event',
-  EDIT_EVENT: '/organizer/edit-event/:id',
-  ORGANIZER_EVENT_DETAILS: '/organizer/event/:id',
-  ORGANIZER_PROFILE: '/organizer/profile',
-  ONGOING_EVENTS: '/organizer/ongoing',
-  
+  ORGANIZER_EVENTS: '/organizer/events',
+  CREATE_EVENT: '/organizer/events/create',
+  EDIT_EVENT: '/organizer/events/edit/:id',
+  ORGANIZER_MANAGE_EVENT: '/organizer/events/:eventId/manage',
+  ORGANIZER_REGISTRATIONS: '/organizer/registrations',
+  ORGANIZER_PAYMENTS: '/organizer/payments',
+  ORGANIZER_CHECKIN: '/organizer/checkin/:eventId',
+
+  // Shared Routes
+  FORUM: '/forum/:eventId',
+  FEEDBACK: '/feedback/:eventId',
+
   // Admin Routes
   ADMIN_DASHBOARD: '/admin/dashboard',
-  MANAGE_CLUBS: '/admin/clubs',
-  PASSWORD_RESET_REQUESTS: '/admin/password-resets',
-};
-
-// API Endpoints (for future backend integration)
-export const API_ENDPOINTS = {
-  // Auth
-  LOGIN: '/api/auth/login',
-  REGISTER: '/api/auth/register',
-  LOGOUT: '/api/auth/logout',
-  
-  // Events
-  GET_EVENTS: '/api/events',
-  CREATE_EVENT: '/api/events',
-  UPDATE_EVENT: '/api/events/:id',
-  DELETE_EVENT: '/api/events/:id',
-  
-  // Registrations
-  REGISTER_EVENT: '/api/registrations',
-  GET_MY_REGISTRATIONS: '/api/registrations/me',
-  
-  // Profile
-  GET_PROFILE: '/api/profile',
-  UPDATE_PROFILE: '/api/profile',
+  ADMIN_EVENTS: '/admin/events',
+  ADMIN_CLUBS: '/admin/clubs',
+  ADMIN_USERS: '/admin/users',
 };

@@ -75,6 +75,7 @@ export function AuthProvider({ children }) {
   const logout = () => {
     setUser(null);
     localStorage.removeItem(STORAGE_KEY);
+    // Navigation will be handled by ProtectedRoute redirecting to /login
   };
 
   const updateProfile = async (profileData) => {

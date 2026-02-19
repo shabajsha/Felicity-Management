@@ -35,15 +35,28 @@ const UserManagement = () => {
   const [newOrganizerErrors, setNewOrganizerErrors] = useState({});
   const [createdCreds, setCreatedCreds] = useState(null);
   const [resetCreds, setResetCreds] = useState(null);
+  const [resetRequests, setResetRequests] = useState([]);
+  const [requestStatusFilter, setRequestStatusFilter] = useState('all');
+  const [selectedResetRequest, setSelectedResetRequest] = useState(null);
+  const [resetActionComment, setResetActionComment] = useState('');
+  const [reviewingResetRequest, setReviewingResetRequest] = useState(false);
 
   // Load users from backend
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true);
-        const res = await adminAPI.getAllUsers();
-        if (res.success) {
-          setUsers(res.data || []);
+        const [usersRes, resetRes] = await Promise.all([
+          adminAPI.getAllUsers(),
+          adminAPI.getPasswordResetRequests('all')
+        ]);
+
+        if (usersRes.success) {
+          setUsers(usersRes.data || []);
+        }
+
+        if (resetRes.success) {
+          setResetRequests(resetRes.data || []);
         }
       } catch (err) {
         showError('Failed to load users');
@@ -114,6 +127,21 @@ const UserManagement = () => {
     }
   };
 
+  const handleDeletePermanent = () => {
+    if (userToDelete) {
+      adminAPI.deleteUserPermanent(userToDelete._id)
+        .then(() => {
+          setUsers(prev => prev.filter(u => u._id !== userToDelete._id));
+          showSuccess('User permanently deleted');
+        })
+        .catch(() => showError('Failed to delete user permanently'))
+        .finally(() => {
+          setShowDeleteModal(false);
+          setUserToDelete(null);
+        });
+    }
+  };
+
   const handleResetPassword = async (user) => {
     try {
       const res = await adminAPI.resetOrganizerPassword(user._id);
@@ -128,13 +156,50 @@ const UserManagement = () => {
     }
   };
 
+  const handleReviewResetRequest = async (action) => {
+    if (!selectedResetRequest) return;
+
+    try {
+      setReviewingResetRequest(true);
+      const response = await adminAPI.reviewPasswordResetRequest(selectedResetRequest._id, {
+        action,
+        comment: resetActionComment
+      });
+
+      if (!response.success) {
+        showError(response.message || 'Failed to review request');
+        return;
+      }
+
+      setResetRequests((prev) => prev.map((item) => (
+        item._id === selectedResetRequest._id ? response.data : item
+      )));
+
+      if (response.credentials) {
+        setResetCreds(response.credentials);
+      }
+
+      showSuccess(response.message || `Request ${action}d`);
+      setSelectedResetRequest(null);
+      setResetActionComment('');
+    } catch (error) {
+      showError(error.message || 'Failed to review request');
+    } finally {
+      setReviewingResetRequest(false);
+    }
+  };
+
+  const filteredResetRequests = useMemo(() => {
+    if (requestStatusFilter === 'all') return resetRequests;
+    return resetRequests.filter((request) => (request.status || '').toLowerCase() === requestStatusFilter.toLowerCase());
+  }, [resetRequests, requestStatusFilter]);
+
   const validateOrganizer = () => {
     const errors = {};
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!newOrganizer.firstName.trim()) errors.firstName = 'First name is required';
     if (!newOrganizer.lastName.trim()) errors.lastName = 'Last name is required';
-    if (!newOrganizer.email.trim()) errors.email = 'Login email is required';
     if (newOrganizer.email && !emailRegex.test(newOrganizer.email)) errors.email = 'Enter a valid email';
     if (!newOrganizer.contactNumber.trim()) errors.contactNumber = 'Contact number is required';
     if (!newOrganizer.organizerName.trim()) errors.organizerName = 'Organizer name is required';
@@ -267,6 +332,58 @@ const UserManagement = () => {
         </table>
       </div>
 
+      <div className="users-table-container reset-requests-block">
+        <div className="filters-section compact">
+          <h2>Organizer Password Reset Requests</h2>
+          <div className="filters-row">
+            <div className="filter-group">
+              <label>Request Status:</label>
+              <select value={requestStatusFilter} onChange={(e) => setRequestStatusFilter(e.target.value)}>
+                <option value="all">All</option>
+                <option value="Pending">Pending</option>
+                <option value="Approved">Approved</option>
+                <option value="Rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <table className="users-table">
+          <thead>
+            <tr>
+              <th>Organizer</th>
+              <th>Club</th>
+              <th>Requested</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredResetRequests.length === 0 ? (
+              <tr><td colSpan="6" className="empty-state">No password reset requests</td></tr>
+            ) : (
+              filteredResetRequests.map((request) => (
+                <tr key={request._id}>
+                  <td>{request.organizerMeta?.organizerName || `${request.organizer?.firstName || ''} ${request.organizer?.lastName || ''}`}</td>
+                  <td>{request.organizerMeta?.clubName || request.organizer?.organizerProfile?.name || 'N/A'}</td>
+                  <td>{formatDate(request.requestedAt)}</td>
+                  <td>{request.reason}</td>
+                  <td><span className={`status-badge status-${(request.status || '').toLowerCase()}`}>{request.status}</span></td>
+                  <td>
+                    {request.status === 'Pending' ? (
+                      <button className="btn-view" onClick={() => setSelectedResetRequest(request)} title="Review Request">📝</button>
+                    ) : (
+                      <span>-</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
       {showModal && selectedUser && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
@@ -313,6 +430,38 @@ const UserManagement = () => {
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setShowDeleteModal(false)}>Cancel</button>
               <button className="btn-danger" onClick={handleDeleteConfirm}>Deactivate</button>
+              <button className="btn-danger" onClick={handleDeletePermanent}>Delete Permanently</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedResetRequest && (
+        <div className="modal-overlay" onClick={() => setSelectedResetRequest(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Review Password Reset Request</h2>
+              <button className="modal-close" onClick={() => setSelectedResetRequest(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="detail-row"><span className="label">Organizer:</span><span className="value">{selectedResetRequest.organizerMeta?.organizerName || selectedResetRequest.organizer?.email}</span></div>
+              <div className="detail-row"><span className="label">Club:</span><span className="value">{selectedResetRequest.organizerMeta?.clubName || 'N/A'}</span></div>
+              <div className="detail-row"><span className="label">Date:</span><span className="value">{formatDate(selectedResetRequest.requestedAt)}</span></div>
+              <div className="detail-row"><span className="label">Reason:</span><span className="value">{selectedResetRequest.reason}</span></div>
+              <label className="form-group">
+                Admin Comment
+                <textarea
+                  rows="3"
+                  value={resetActionComment}
+                  onChange={(e) => setResetActionComment(e.target.value)}
+                  placeholder="Optional comment for approval/rejection"
+                />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setSelectedResetRequest(null)}>Cancel</button>
+              <button className="btn-danger" onClick={() => handleReviewResetRequest('reject')} disabled={reviewingResetRequest}>Reject</button>
+              <button className="btn-primary" onClick={() => handleReviewResetRequest('approve')} disabled={reviewingResetRequest}>Approve & Generate Password</button>
             </div>
           </div>
         </div>
@@ -354,7 +503,7 @@ const UserManagement = () => {
                     {newOrganizerErrors.lastName && <span className="error-text">{newOrganizerErrors.lastName}</span>}
                   </label>
                   <label className="form-group">
-                    Login Email *
+                    Login Email (auto-generated if left blank)
                     <input
                       type="email"
                       value={newOrganizer.email}

@@ -126,9 +126,13 @@ exports.deleteClub = async (req, res, next) => {
       });
     }
 
-    // Soft delete - set isActive to false
-    club.isActive = false;
-    await club.save();
+    if (req.query.permanent === 'true') {
+      await club.deleteOne();
+    } else {
+      // Soft delete - set isActive to false
+      club.isActive = false;
+      await club.save();
+    }
 
     res.status(200).json({
       success: true,

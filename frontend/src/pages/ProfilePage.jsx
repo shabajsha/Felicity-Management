@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
-import { PARTICIPANT_TYPES, AREAS_OF_INTEREST } from '../utils/constants';
-import { clubsAPI } from '../utils/api';
+import { PARTICIPANT_TYPES, AREAS_OF_INTEREST, USER_ROLES, ORGANIZER_CATEGORIES } from '../utils/constants';
+import { authAPI, clubsAPI } from '../utils/api';
 import './ProfilePage.css';
 
 function ProfilePage() {
@@ -20,6 +20,11 @@ function ProfilePage() {
     contactNumber: '',
     interests: [],
     followedClubs: [],
+    organizerName: '',
+    organizerCategory: '',
+    organizerDescription: '',
+    organizerContactEmail: '',
+    organizerContactNumber: '',
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -29,6 +34,9 @@ function ProfilePage() {
     newPassword: '',
     confirmPassword: '',
   });
+  const [resetReason, setResetReason] = useState('');
+  const [resetRequests, setResetRequests] = useState([]);
+  const [submittingResetRequest, setSubmittingResetRequest] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -41,6 +49,11 @@ function ProfilePage() {
         contactNumber: user.contactNumber || '',
         interests: user.preferences?.interests || [],
         followedClubs: (user.preferences?.followedClubs || []).map(clubItem => clubItem._id || clubItem),
+        organizerName: user.organizerProfile?.name || '',
+        organizerCategory: user.organizerProfile?.category || '',
+        organizerDescription: user.organizerProfile?.description || '',
+        organizerContactEmail: user.organizerProfile?.contactEmail || '',
+        organizerContactNumber: user.organizerProfile?.contactNumber || '',
       });
     }
   }, [user]);
@@ -60,6 +73,22 @@ function ProfilePage() {
 
     fetchClubs();
   }, []);
+
+  useEffect(() => {
+    const loadResetRequests = async () => {
+      if (!user || user.role !== USER_ROLES.ORGANIZER) return;
+      try {
+        const response = await authAPI.getOrganizerPasswordResetRequests();
+        if (response.success) {
+          setResetRequests(response.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to load reset requests', err);
+      }
+    };
+
+    loadResetRequests();
+  }, [user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -102,6 +131,29 @@ function ProfilePage() {
       return;
     }
 
+    if (user?.role === USER_ROLES.ORGANIZER) {
+      if (!formData.organizerName.trim()) {
+        showError('Organizer name is required');
+        return;
+      }
+      if (!formData.organizerCategory.trim()) {
+        showError('Organizer category is required');
+        return;
+      }
+      if (!formData.organizerDescription.trim()) {
+        showError('Organizer description is required');
+        return;
+      }
+      if (!formData.organizerContactEmail.trim()) {
+        showError('Organizer contact email is required');
+        return;
+      }
+      if (!formData.organizerContactNumber.trim()) {
+        showError('Organizer contact number is required');
+        return;
+      }
+    }
+
     const result = await updateProfile({
       firstName: formData.firstName,
       lastName: formData.lastName,
@@ -109,6 +161,13 @@ function ProfilePage() {
       college: formData.college,
       interests: formData.interests,
       followedClubs: formData.followedClubs,
+      organizerProfile: user?.role === USER_ROLES.ORGANIZER ? {
+        name: formData.organizerName,
+        category: formData.organizerCategory,
+        description: formData.organizerDescription,
+        contactEmail: formData.organizerContactEmail,
+        contactNumber: formData.organizerContactNumber,
+      } : undefined,
     });
 
     if (result.success) {
@@ -147,6 +206,32 @@ function ProfilePage() {
     }
   };
 
+  const handleSubmitResetRequest = async () => {
+    if (!resetReason.trim()) {
+      showError('Please provide a reason for password reset request');
+      return;
+    }
+
+    try {
+      setSubmittingResetRequest(true);
+      const response = await authAPI.requestOrganizerPasswordReset({ reason: resetReason.trim() });
+      if (response.success) {
+        showSuccess('Password reset request submitted to admin');
+        setResetReason('');
+        const listResponse = await authAPI.getOrganizerPasswordResetRequests();
+        if (listResponse.success) {
+          setResetRequests(listResponse.data || []);
+        }
+      } else {
+        showError(response.message || 'Failed to submit request');
+      }
+    } catch (err) {
+      showError(err.message || 'Failed to submit request');
+    } finally {
+      setSubmittingResetRequest(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
@@ -174,6 +259,11 @@ function ProfilePage() {
                 contactNumber: user.contactNumber || '',
                 interests: user.preferences?.interests || [],
                 followedClubs: (user.preferences?.followedClubs || []).map(clubItem => clubItem._id || clubItem),
+                organizerName: user.organizerProfile?.name || '',
+                organizerCategory: user.organizerProfile?.category || '',
+                organizerDescription: user.organizerProfile?.description || '',
+                organizerContactEmail: user.organizerProfile?.contactEmail || '',
+                organizerContactNumber: user.organizerProfile?.contactNumber || '',
               });
             }}>
               Cancel
@@ -261,6 +351,123 @@ function ProfilePage() {
           </div>
         </div>
 
+        {user?.role === USER_ROLES.ORGANIZER && (
+          <div className="profile-section">
+            <h2>Organizer Profile</h2>
+            <div className="form-grid">
+              <div className="form-group">
+                <label>Organizer Name *</label>
+                <input
+                  type="text"
+                  name="organizerName"
+                  value={formData.organizerName}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Enter organizer name"
+                />
+              </div>
+              <div className="form-group">
+                <label>Category *</label>
+                <select
+                  name="organizerCategory"
+                  value={formData.organizerCategory}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                >
+                  <option value="">Select category</option>
+                  {ORGANIZER_CATEGORIES.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Description *</label>
+                <textarea
+                  name="organizerDescription"
+                  value={formData.organizerDescription}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Describe your organizer/club"
+                />
+              </div>
+              <div className="form-group">
+                <label>Contact Email *</label>
+                <input
+                  type="email"
+                  name="organizerContactEmail"
+                  value={formData.organizerContactEmail}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="contact@example.com"
+                />
+              </div>
+              <div className="form-group">
+                <label>Contact Number *</label>
+                <input
+                  type="tel"
+                  name="organizerContactNumber"
+                  value={formData.organizerContactNumber}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="Enter contact number"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {user?.role === USER_ROLES.ORGANIZER && (
+          <div className="profile-section">
+            <h2>Password Reset Requests</h2>
+            <p className="section-description">Submit request to admin to reset organizer password. Status and history are tracked here.</p>
+            <div className="form-group">
+              <label>Reason for Reset Request</label>
+              <textarea
+                rows="3"
+                value={resetReason}
+                onChange={(e) => setResetReason(e.target.value)}
+                placeholder="Example: Account compromise suspected / forgot credentials"
+              />
+            </div>
+            <div className="button-group">
+              <button
+                className="btn btn-primary"
+                onClick={handleSubmitResetRequest}
+                disabled={submittingResetRequest}
+              >
+                {submittingResetRequest ? 'Submitting...' : 'Request Password Reset'}
+              </button>
+            </div>
+
+            {resetRequests.length > 0 && (
+              <div className="reset-history-box">
+                {resetRequests.map((request) => (
+                  <div key={request._id} className="reset-history-item">
+                    <div className="detail-row">
+                      <span className="label">Requested:</span>
+                      <span className="value">{formatDate(request.requestedAt)}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span className="label">Status:</span>
+                      <span className="value">{request.status}</span>
+                    </div>
+                    <div className="detail-row">
+                      <span className="label">Reason:</span>
+                      <span className="value">{request.reason}</span>
+                    </div>
+                    {request.adminComment && (
+                      <div className="detail-row">
+                        <span className="label">Admin Comment:</span>
+                        <span className="value">{request.adminComment}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="profile-section">
           <h2>Areas of Interest</h2>
           <p className="section-description">Select topics you're interested in to get personalized event recommendations</p>
@@ -309,15 +516,23 @@ function ProfilePage() {
 
         <div className="profile-section">
           <h2>Security Settings</h2>
-          <div className="security-actions">
-            <button className="btn btn-outline" onClick={() => setShowPasswordModal(true)}>
-              🔒 Change Password
-            </button>
-          </div>
+          {user?.role === USER_ROLES.ORGANIZER ? (
+            <div className="alert alert-info">
+              <p><strong>Password Reset Policy for Organizers:</strong></p>
+              <p>Organizers cannot change their own passwords. If you need a password reset, please contact the Admin.</p>
+              <p className="muted">This is a security requirement as organizer accounts are provisioned by Admin.</p>
+            </div>
+          ) : (
+            <div className="security-actions">
+              <button className="btn btn-outline" onClick={() => setShowPasswordModal(true)}>
+                🔒 Change Password
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {showPasswordModal && (
+      {showPasswordModal && user?.role !== USER_ROLES.ORGANIZER && (
         <div className="modal-overlay" onClick={() => setShowPasswordModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">

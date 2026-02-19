@@ -270,7 +270,7 @@ function ParticipantDashboard() {
             className={`tab ${activeTab === 'cancelled' ? 'active' : ''}`}
             onClick={() => setActiveTab('cancelled')}
           >
-            Cancelled ({categorizedRegistrations.cancelled.length})
+            Cancelled/Rejected ({categorizedRegistrations.cancelled.length})
           </button>
         </div>
 

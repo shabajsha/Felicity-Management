@@ -104,6 +104,20 @@
   gap: 0.75rem;
 }
 
+.reset-history-box {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.reset-history-item {
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: var(--color-surface-2);
+}
+
 .interest-chip {
   display: flex;
   align-items: center;
@@ -209,6 +223,42 @@
 .security-actions {
   display: flex;
   gap: 1rem;
+}
+
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border-left: 4px solid;
+}
+
+.alert p {
+  margin: 0.5rem 0;
+  line-height: 1.6;
+}
+
+.alert p:first-child {
+  margin-top: 0;
+}
+
+.alert p:last-child {
+  margin-bottom: 0;
+}
+
+.alert strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+.alert.alert-info {
+  background-color: #f0f9ff;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.alert .muted {
+  color: #64748b;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
 }
 
 .modal-overlay {
