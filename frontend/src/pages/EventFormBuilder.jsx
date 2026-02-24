@@ -947,44 +947,66 @@ const EventFormBuilder = () => {
                 </button>
               </div>
 
+              <p className="section-description">
+                Use variants when the same item has different size/color and price/stock.
+                For example, a T‑shirt with multiple sizes and colors.
+              </p>
+
               {merchandiseData.variants.length === 0 && (
-                <p className="section-description">Add variants to track size/color-specific stock and price.</p>
+                <p className="section-description">
+                  Add one row per combination of size and color. Leave SKU empty if you do not use it.
+                </p>
               )}
 
               {merchandiseData.variants.map((variant, index) => (
                 <div key={index} className="variant-row">
-                  <input
-                    type="text"
-                    placeholder="SKU"
-                    value={variant.sku}
-                    onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Size"
-                    value={variant.size}
-                    onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Color"
-                    value={variant.color}
-                    onChange={(e) => handleVariantChange(index, 'color', e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Price"
-                    min="0"
-                    value={variant.price}
-                    onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Stock"
-                    min="0"
-                    value={variant.stock}
-                    onChange={(e) => handleVariantChange(index, 'stock', e.target.value)}
-                  />
+                  <div className="variant-field">
+                    <label>SKU (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., TSHIRT-BLK-M"
+                      value={variant.sku}
+                      onChange={(e) => handleVariantChange(index, 'sku', e.target.value)}
+                    />
+                  </div>
+                  <div className="variant-field">
+                    <label>Size</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., S, M, L"
+                      value={variant.size}
+                      onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
+                    />
+                  </div>
+                  <div className="variant-field">
+                    <label>Color</label>
+                    <input
+                      type="text"
+                      placeholder="e.g., Black"
+                      value={variant.color}
+                      onChange={(e) => handleVariantChange(index, 'color', e.target.value)}
+                    />
+                  </div>
+                  <div className="variant-field">
+                    <label>Price (₹)</label>
+                    <input
+                      type="number"
+                      placeholder="e.g., 399"
+                      min="0"
+                      value={variant.price}
+                      onChange={(e) => handleVariantChange(index, 'price', e.target.value)}
+                    />
+                  </div>
+                  <div className="variant-field">
+                    <label>Stock</label>
+                    <input
+                      type="number"
+                      placeholder="Quantity"
+                      min="0"
+                      value={variant.stock}
+                      onChange={(e) => handleVariantChange(index, 'stock', e.target.value)}
+                    />
+                  </div>
                   <button type="button" className="btn-danger-small" onClick={() => handleRemoveVariant(index)}>
                     Remove
                   </button>
