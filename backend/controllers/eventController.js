@@ -94,6 +94,13 @@ exports.createEvent = async (req, res, next) => {
 
     const event = await Event.create(req.body);
 
+    // If published immediately, auto-post to organizer's Discord webhook
+    if (publishNow && event.organizer) {
+      const organizer = await User.findById(event.organizer).select('organizerProfile');
+      const webhookUrl = organizer?.organizerProfile?.discordWebhook;
+      postEventToDiscord(event, webhookUrl);
+    }
+
     res.status(201).json({
       success: true,
       data: event
@@ -591,6 +598,14 @@ exports.publishEvent = async (req, res, next) => {
     event.status = 'approved';
     event.lifecycleStatus = 'published';
     await event.save();
+
+    // Auto-post new event to organizer's Discord webhook
+    let webhookUrl;
+    if (event.organizer) {
+      const organizer = await User.findById(event.organizer).select('organizerProfile');
+      webhookUrl = organizer?.organizerProfile?.discordWebhook;
+    }
+    postEventToDiscord(event, webhookUrl);
 
     res.status(200).json({
       success: true,

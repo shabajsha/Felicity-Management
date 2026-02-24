@@ -417,6 +417,18 @@ function ProfilePage() {
                   placeholder="Enter contact number"
                 />
               </div>
+              <div className="form-group form-group-full">
+                <label>Discord Webhook URL</label>
+                <input
+                  type="url"
+                  name="organizerDiscordWebhook"
+                  value={formData.organizerDiscordWebhook}
+                  onChange={handleChange}
+                  disabled={!isEditing}
+                  placeholder="https://discord.com/api/webhooks/..."
+                />
+                <span className="field-note">Optional. New approved events will be auto-posted to this Discord channel.</span>
+              </div>
             </div>
           </div>
         )}

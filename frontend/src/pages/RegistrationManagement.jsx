@@ -241,16 +241,9 @@ const RegistrationManagement = () => {
     }
   };
 
-  // Orders where participant has uploaded proof and are part of the merch payment verification flow
-  const paymentProofOrders = registrations.filter(
-    reg =>
-      reg.paymentScreenshot &&
-      ['pending', 'approved', 'rejected'].includes(reg.paymentApprovalStatus)
-  );
-
-  // Subset that are still awaiting organizer decision (used for badge/count)
-  const pendingPaymentProofs = paymentProofOrders.filter(
-    reg => reg.paymentApprovalStatus === 'pending'
+  // Orders where participant has uploaded proof and is awaiting organizer review
+  const pendingPaymentProofs = registrations.filter(
+    reg => reg.paymentApprovalStatus === 'pending' && reg.paymentScreenshot
   );
 
   const handleResendTicket = async (registrationId) => {
@@ -742,14 +735,13 @@ const RegistrationManagement = () => {
           <h2 style={{ marginBottom: '1rem' }}>Merchandise Payment Proofs</h2>
           <p style={{ color: '#64748b', marginBottom: '1.5rem' }}>
             Orders below have uploaded payment screenshots and are awaiting your approval.
-            Approving generates a QR ticket and sends a confirmation email to the participant. Already
-            reviewed orders remain visible here with their current status.
+            Approving generates a QR ticket and sends a confirmation email to the participant.
           </p>
-          {paymentProofOrders.length === 0 ? (
+          {pendingPaymentProofs.length === 0 ? (
             <div className="empty-state"><p>No pending payment proofs to review</p></div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {paymentProofOrders.map(reg => (
+              {pendingPaymentProofs.map(reg => (
                 <div key={reg._id || reg.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.25rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <a
                     href={`${BACKEND_URL}${reg.paymentScreenshot}`}
@@ -780,52 +772,25 @@ const RegistrationManagement = () => {
                     <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.5rem' }}>
                       ₹{reg.paymentAmount || 0}
                     </div>
-                    <span
-                      style={{
-                        background:
-                          reg.paymentApprovalStatus === 'approved'
-                            ? '#dcfce7'
-                            : reg.paymentApprovalStatus === 'rejected'
-                              ? '#fee2e2'
-                              : '#fef3c7',
-                        color:
-                          reg.paymentApprovalStatus === 'approved'
-                            ? '#166534'
-                            : reg.paymentApprovalStatus === 'rejected'
-                              ? '#991b1b'
-                              : '#92400e',
-                        borderRadius: '6px',
-                        padding: '2px 10px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600
-                      }}
-                    >
-                      {reg.paymentApprovalStatus === 'approved'
-                        ? '✅ Payment Approved'
-                        : reg.paymentApprovalStatus === 'rejected'
-                          ? '❌ Payment Rejected'
-                          : '🕐 Awaiting Approval'}
+                    <span style={{ background: '#fef3c7', color: '#92400e', borderRadius: '6px', padding: '2px 10px', fontSize: '0.78rem', fontWeight: 600 }}>
+                      🕐 Awaiting Approval
                     </span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', minWidth: '140px' }}>
-                    {reg.paymentApprovalStatus === 'pending' && (
-                      <>
-                        <button
-                          onClick={() => handleApprovePayment(reg._id || reg.id)}
-                          disabled={processingPaymentId === (reg._id || reg.id)}
-                          style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', opacity: processingPaymentId === (reg._id || reg.id) ? 0.6 : 1 }}
-                        >
-                          ✓ Approve Payment
-                        </button>
-                        <button
-                          onClick={() => handleRejectPayment(reg._id || reg.id)}
-                          disabled={processingPaymentId === (reg._id || reg.id)}
-                          style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', opacity: processingPaymentId === (reg._id || reg.id) ? 0.6 : 1 }}
-                        >
-                          ✕ Reject Payment
-                        </button>
-                      </>
-                    )}
+                    <button
+                      onClick={() => handleApprovePayment(reg._id || reg.id)}
+                      disabled={processingPaymentId === (reg._id || reg.id)}
+                      style={{ background: '#22c55e', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', opacity: processingPaymentId === (reg._id || reg.id) ? 0.6 : 1 }}
+                    >
+                      ✓ Approve Payment
+                    </button>
+                    <button
+                      onClick={() => handleRejectPayment(reg._id || reg.id)}
+                      disabled={processingPaymentId === (reg._id || reg.id)}
+                      style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '8px', padding: '0.6rem 1rem', fontWeight: 600, cursor: 'pointer', opacity: processingPaymentId === (reg._id || reg.id) ? 0.6 : 1 }}
+                    >
+                      ✕ Reject Payment
+                    </button>
                   </div>
                 </div>
               ))}

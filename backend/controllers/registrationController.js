@@ -691,14 +691,6 @@ exports.registerForEvent = async (req, res, next) => {
       });
     }
 
-    // Check if registrations are closed for this event
-    if (event.isClosed) {
-      return res.status(400).json({
-        success: false,
-        message: 'Registrations are closed for this event'
-      });
-    }
-
     // Check eligibility
     const normalizedEligibility = normalizeEligibility(event.eligibility);
     if (normalizedEligibility === 'IIIT' && req.user.participantType !== 'IIIT') {
