@@ -107,7 +107,7 @@ function Login() {
           <div className="auth-notes">
             <p><strong>Note:</strong></p>
             <p>• Your role (Participant/Organizer/Admin) is determined by your account</p>
-            <p>• IIIT participants should use their @iiit.ac.in email</p>
+            <p>• IIIT participants should use their institute email (@iiit.ac.in, @students.iiit.ac.in or @research.iiit.ac.in)</p>
             <p>• Only participants can self-register. Contact admin for organizer accounts.</p>
           </div>
         </div>

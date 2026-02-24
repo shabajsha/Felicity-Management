@@ -349,6 +349,31 @@ td.number {
   font-size: 0.9rem;
 }
 
+.credentials-box-prominent {
+  margin: 0 0 1rem 0;
+  padding: 1.25rem;
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  font-size: 1rem;
+}
+
+.credentials-box-prominent code {
+  background: #fff;
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+}
+
+.form-hint {
+  margin: 0 0 1rem 0;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #1e40af;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

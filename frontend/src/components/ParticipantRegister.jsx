@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useToast } from './Toast.jsx';
+import { isIIITEmail } from '../utils/helpers';
 import './ParticipantRegister.css';
 
 function ParticipantRegister() {
@@ -22,8 +23,8 @@ function ParticipantRegister() {
     if (!firstName.trim()) return 'First name is required';
     if (!lastName.trim()) return 'Last name is required';
     if (!email.trim()) return 'Email is required';
-    if (participantType === 'IIIT' && !email.toLowerCase().endsWith('@iiit.ac.in')) {
-      return 'IIIT participants must use their IIIT email (@iiit.ac.in)';
+    if (participantType === 'IIIT' && !isIIITEmail(email)) {
+      return 'IIIT participants must use their IIIT email (@iiit.ac.in, @students.iiit.ac.in or @research.iiit.ac.in)';
     }
     if (password.length < 6) return 'Password must be at least 6 characters';
     if (participantType !== 'IIIT' && !college.trim()) return 'College / Organization is required';
@@ -86,7 +87,10 @@ function ParticipantRegister() {
                 ))}
               </div>
               {participantType === 'IIIT' && (
-                <p className="hint">Use your @iiit.ac.in email to complete registration.</p>
+                <p className="hint">
+                  Use your IIIT email to complete registration
+                  (@iiit.ac.in, @students.iiit.ac.in or @research.iiit.ac.in).
+                </p>
               )}
             </div>
 

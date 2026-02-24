@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { PARTICIPANT_TYPES, AREAS_OF_INTEREST, USER_ROLES, ORGANIZER_CATEGORIES } from '../utils/constants';
 import { authAPI, clubsAPI } from '../utils/api';
+import { formatDate } from '../utils/helpers';
 import './ProfilePage.css';
 
 function ProfilePage() {

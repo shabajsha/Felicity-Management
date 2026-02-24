@@ -4,7 +4,7 @@ import { formatDateShort, getEventAvailability, formatTime, getOrganizerName } f
 import { EVENT_TYPES, USER_ROLES } from '../utils/constants';
 import './EventCard.css';
 
-function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
+function EventCard({ event, onDelete, isRegistered = false }) {
   const { user } = useAuth();
 
   const availabilityStatus = getEventAvailability(event);
@@ -23,7 +23,7 @@ function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
         </span>
         <div className="badges">
           {event.type === EVENT_TYPES.MERCHANDISE && (
-            <span className="type-badge merchandise">🛍️ Merch</span>
+            <span className="type-badge merchandise">Merchandise</span>
           )}
           <span className={`availability-badge ${availabilityStatus.class}`}>
             {availabilityStatus.available} spots left
@@ -47,15 +47,15 @@ function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
         
         <div className="event-meta">
           <div className="meta-item">
-            <span className="icon">📅</span>
+            <span className="icon">Date</span>
             <span>{formatDateShort(event.date)}</span>
           </div>
           <div className="meta-item">
-            <span className="icon">⏰</span>
+            <span className="icon">Time</span>
             <span>{formatTime(event.time)}</span>
           </div>
           <div className="meta-item">
-            <span className="icon">📍</span>
+            <span className="icon">Location</span>
             <span>{event.location}</span>
           </div>
         </div>
@@ -67,7 +67,7 @@ function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
         </p>
 
         <div className="event-organizer">
-          <span className="icon">👤</span>
+          <span className="icon">Organizer</span>
           <span>{organizerDisplayName}</span>
         </div>
 
@@ -86,18 +86,17 @@ function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
 
       <div className="event-card-footer">
         {isParticipant && (
-          <button 
+          <Link
+            to={`/event/${event._id || event.id}`}
             className="btn btn-primary"
-            onClick={() => onRegister(event._id || event.id)}
-            disabled={isFull || isRegistered}
           >
-            {isRegistered ? '✓ Already Registered' : isFull ? '✓ Full' : '✓ Register'}
-          </button>
+            View Details
+          </Link>
         )}
         {canManage && (
           <div className="action-buttons">
             <Link to={`/organizer/events/edit/${event._id || event.id}`} className="btn btn-secondary">
-              ✏️ Edit
+              Edit
             </Link>
             <button 
               className="btn btn-danger"
@@ -107,7 +106,7 @@ function EventCard({ event, onDelete, onRegister, isRegistered = false }) {
                 }
               }}
             >
-              🗑️ Delete
+              Delete
             </button>
           </div>
         )}

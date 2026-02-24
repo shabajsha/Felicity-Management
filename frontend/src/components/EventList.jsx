@@ -6,7 +6,7 @@ import { eventsAPI, registrationsAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext.jsx';
 import './EventList.css';
 
-function EventList({ events: propEvents, onDelete, onRegister }) {
+function EventList({ events: propEvents, onDelete }) {
   const { user } = useAuth();
   const [events, setEvents] = useState(propEvents || []);
   const [loading, setLoading] = useState(!propEvents);
@@ -94,7 +94,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
 
   const filteredEvents = useMemo(() => {
     let result = searchEvents(events, searchTerm);
-    result = filterEvents(result, { 
+    result = filterEvents(result, {
       type: filterType !== 'All' ? filterType : null,
       category: filterCategory !== 'All' ? filterCategory : null,
       eligibility: filterEligibility !== 'All' ? filterEligibility : null,
@@ -103,9 +103,20 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
       followedOnly,
       followedClubs: (user?.preferences?.followedClubs || []).map(c => c._id || c)
     });
-    result = sortEvents(result, sortBy);
+    // When sortBy is 'date', keep API order so preference-based ordering from backend is preserved
+    if (sortBy !== 'date') {
+      result = sortEvents(result, sortBy);
+    }
     return result;
   }, [events, searchTerm, filterType, filterCategory, filterEligibility, dateFrom, dateTo, followedOnly, sortBy, user]);
+
+  const hasPreferences = Boolean(
+    user &&
+    ((user.preferences?.interests?.length || 0) > 0 || (user.preferences?.followedClubs?.length || 0) > 0)
+  );
+  const usePreferenceOrder = sortBy === 'date' && hasPreferences;
+  const recommendedEvents = usePreferenceOrder ? filteredEvents.slice(0, 6) : [];
+  const remainingEvents = usePreferenceOrder && filteredEvents.length > 6 ? filteredEvents.slice(6) : filteredEvents;
 
   return (
     <div className="event-list-container">
@@ -123,7 +134,23 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
                 key={event._id || event.id}
                 event={event}
                 onDelete={onDelete}
-                onRegister={onRegister}
+                isRegistered={registeredEventIds.has((event._id || event.id || '').toString())}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recommendedEvents.length > 0 && (
+        <div className="recommended-section trending-section">
+          <h3>Recommended for you</h3>
+          <p className="section-subtitle">Based on your interests and followed clubs</p>
+          <div className="events-grid">
+            {recommendedEvents.map(event => (
+              <EventCard
+                key={event._id || event.id}
+                event={event}
+                onDelete={onDelete}
                 isRegistered={registeredEventIds.has((event._id || event.id || '').toString())}
               />
             ))}
@@ -135,7 +162,7 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
         <div className="search-box">
           <input
             type="text"
-            placeholder="🔍 Search events..."
+            placeholder="Search events..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
@@ -220,19 +247,18 @@ function EventList({ events: propEvents, onDelete, onRegister }) {
         <div className="no-events">
           <p>No events found. Try adjusting your search or filters.</p>
         </div>
-      ) : (
+      ) : (usePreferenceOrder ? remainingEvents : filteredEvents).length > 0 ? (
         <div className="events-grid">
-          {filteredEvents.map(event => (
-            <EventCard 
-              key={event._id || event.id} 
+          {(usePreferenceOrder ? remainingEvents : filteredEvents).map(event => (
+            <EventCard
+              key={event._id || event.id}
               event={event}
               onDelete={onDelete}
-              onRegister={onRegister}
               isRegistered={registeredEventIds.has((event._id || event.id || '').toString())}
             />
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

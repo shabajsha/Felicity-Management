@@ -179,7 +179,7 @@ function EventDetails({ onRegister, onDelete }) {
       showError('You are already registered for this event');
       return;
     }
-    
+
     if (deadlinePassed) {
       showError('Registration deadline has passed');
       return;
@@ -295,7 +295,13 @@ function EventDetails({ onRegister, onDelete }) {
     try {
       const response = await registrationsAPI.registerForEvent(event._id || event.id, payload);
       if (response.success) {
-        showSuccess('Purchase successful! Ticket has been issued.');
+        const regData = response.data;
+        const needsProof = regData?.paymentApprovalStatus === 'awaiting-proof';
+        showSuccess(
+          needsProof
+            ? 'Order placed! Please upload your payment proof from your dashboard.'
+            : 'Purchase successful! Ticket has been issued.'
+        );
         setShowMerchModal(false);
         const eventResponse = await eventsAPI.getEventById(id);
         if (eventResponse.success) {
@@ -321,7 +327,7 @@ function EventDetails({ onRegister, onDelete }) {
                 {event.category || 'Uncategorized'}
               </span>
               {event.type === EVENT_TYPES.MERCHANDISE ? (
-                <span className="type-badge merchandise">🛍️ Merchandise</span>
+                <span className="type-badge merchandise">Merchandise</span>
               ) : (
                 <span className="type-badge">{event.type || 'Event'}</span>
               )}
@@ -332,7 +338,7 @@ function EventDetails({ onRegister, onDelete }) {
           </div>
           <h1 className="event-title">{event.title}</h1>
           <p className="event-organizer">
-            <span className="icon">👤</span>
+            <span className="icon">Organizer</span>
             Organized by <strong>{organizerDisplayName}</strong>
           </p>
         </div>
@@ -351,7 +357,7 @@ function EventDetails({ onRegister, onDelete }) {
 
           <div className="info-grid">
             <div className="info-item">
-              <div className="info-icon">📅</div>
+              <div className="info-icon">Date</div>
               <div className="info-content">
                 <span className="info-label">Date</span>
                 <span className="info-value">{formatDate(event.date)}</span>
@@ -359,7 +365,7 @@ function EventDetails({ onRegister, onDelete }) {
             </div>
 
             <div className="info-item">
-              <div className="info-icon">📆</div>
+              <div className="info-icon">End</div>
               <div className="info-content">
                 <span className="info-label">End Date</span>
                 <span className="info-value">{formatDate(event.endDate || event.date)}</span>
@@ -367,7 +373,7 @@ function EventDetails({ onRegister, onDelete }) {
             </div>
 
             <div className="info-item">
-              <div className="info-icon">⏰</div>
+              <div className="info-icon">Time</div>
               <div className="info-content">
                 <span className="info-label">Time</span>
                 <span className="info-value">{formatTime(event.time)}</span>
@@ -375,7 +381,7 @@ function EventDetails({ onRegister, onDelete }) {
             </div>
 
             <div className="info-item">
-              <div className="info-icon">📍</div>
+              <div className="info-icon">Location</div>
               <div className="info-content">
                 <span className="info-label">Location</span>
                 <span className="info-value">{event.location}</span>
@@ -383,21 +389,21 @@ function EventDetails({ onRegister, onDelete }) {
             </div>
 
             <div className="info-item">
-              <div className="info-icon">👥</div>
+              <div className="info-icon">Capacity</div>
               <div className="info-content">
                 <span className="info-label">Capacity</span>
                 <span className="info-value">{isMerch ? `${merchStock} in stock` : `${capacity} people`}</span>
               </div>
             </div>
             <div className="info-item">
-              <div className="info-icon">✅</div>
+              <div className="info-icon">Eligibility</div>
               <div className="info-content">
                 <span className="info-label">Eligibility</span>
                 <span className="info-value">{eligibilityLabel}</span>
               </div>
             </div>
             <div className="info-item">
-              <div className="info-icon">⏳</div>
+              <div className="info-icon">Deadline</div>
               <div className="info-content">
                 <span className="info-label">Registration Deadline</span>
                 <span className="info-value">{formatDate(event.registrationDeadline || event.date)}</span>
@@ -429,7 +435,7 @@ function EventDetails({ onRegister, onDelete }) {
             <h3>Registration Status</h3>
             <div className="progress-container">
               <div className="progress-bar-large">
-                <div 
+                <div
                   className={`progress-fill ${availabilityStatus.class}`}
                   style={{ width: `${capacity > 0 ? (registered / capacity) * 100 : 0}%` }}
                 ></div>
@@ -448,51 +454,51 @@ function EventDetails({ onRegister, onDelete }) {
 
         <div className="details-footer">
           {isParticipant && (
-            <button 
+            <button
               className="btn btn-primary btn-large"
               onClick={handleRegister}
               disabled={isFull || deadlinePassed || !isEligible || hasRegistered}
             >
               {hasRegistered
-                ? '✓ Already Registered'
+                ? 'Already Registered'
                 : isFull
-                ? '✓ Sold Out'
-                : deadlinePassed
-                  ? 'Deadline Passed'
-                  : (!isEligible
-                    ? 'Not Eligible'
-                    : (isMerch
-                      ? '🛍️ Purchase'
-                      : (registrationMode === 'Team'
-                        ? '👥 Register Team'
-                        : (registrationMode === 'Both' ? '🧩 Choose Registration Type' : '✓ Register for This Event'))))
+                  ? 'Sold Out'
+                  : deadlinePassed
+                    ? 'Deadline Passed'
+                    : (!isEligible
+                      ? 'Not Eligible'
+                      : (isMerch
+                        ? 'Purchase'
+                        : (registrationMode === 'Team'
+                          ? 'Register Team'
+                          : (registrationMode === 'Both' ? 'Choose Registration Type' : 'Register for This Event'))))
               }
             </button>
           )}
-          
+
           <div className="action-buttons">
             {user && (
               <>
                 <Link to={`/forum/${event._id || event.id}`} className="btn btn-secondary">
-                  💬 Discussion
+                  Discussion
                 </Link>
                 <Link to={`/feedback/${event._id || event.id}`} className="btn btn-secondary">
-                  ⭐ Feedback
+                  Feedback
                 </Link>
               </>
             )}
             {canManage && (
               <>
                 <Link to={`/edit/${event._id || event.id}`} className="btn btn-secondary">
-                  ✏️ Edit Event
+                  Edit Event
                 </Link>
                 <button onClick={handleDelete} className="btn btn-danger">
-                  🗑️ Delete Event
+                  Delete Event
                 </button>
               </>
             )}
             <Link to="/" className="btn btn-outline">
-              ← Back to Events
+              Back to Events
             </Link>
           </div>
         </div>
@@ -508,7 +514,7 @@ function EventDetails({ onRegister, onDelete }) {
       {showTeamModal && (
         <div className="modal-overlay" onClick={() => setShowTeamModal(false)}>
           <div className="modal-content team-modal" onClick={e => e.stopPropagation()}>
-            <TeamRegistrationForm 
+            <TeamRegistrationForm
               event={event}
               onSubmit={handleTeamSubmit}
               onCancel={() => setShowTeamModal(false)}

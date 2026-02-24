@@ -450,6 +450,35 @@ td.number {
   padding: 1rem;
 }
 
+.credentials-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1rem 0;
+  font-size: 0.9rem;
+}
+
+.credentials-box-prominent {
+  padding: 1.25rem;
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+  font-size: 1rem;
+}
+
+.credentials-box-prominent code {
+  background: #fff;
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+}
+
+.warning-text {
+  color: #b45309;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
 .modal-actions {
   padding: 1.5rem;
   border-top: 1px solid #e5e5e5;

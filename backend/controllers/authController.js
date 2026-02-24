@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Club = require('../models/Club');
 const PasswordResetRequest = require('../models/PasswordResetRequest');
 const { sendTokenResponse } = require('../utils/auth');
+const { isIIITEmail } = require('../utils/validators');
 
 // @desc    Register user
 // @route   POST /api/auth/register
@@ -11,10 +12,10 @@ exports.register = async (req, res, next) => {
     const { firstName, lastName, email, password, role, participantType, college, contactNumber } = req.body;
 
     // Validation for IIIT participants
-    if (participantType === 'IIIT' && !email.toLowerCase().endsWith('@iiit.ac.in')) {
+    if (participantType === 'IIIT' && !isIIITEmail(email)) {
       return res.status(400).json({
         success: false,
-        message: 'IIIT participants must use @iiit.ac.in email'
+        message: 'IIIT participants must use a valid IIIT email (@iiit.ac.in, @students.iiit.ac.in or @research.iiit.ac.in)'
       });
     }
 
@@ -84,6 +85,17 @@ exports.login = async (req, res, next) => {
         success: false,
         message: 'Account is deactivated. Please contact admin.'
       });
+    }
+
+    // For organizers linked to a club, ensure the club is still active
+    if (user.role === 'Organizer' && user.clubId) {
+      const club = await Club.findById(user.clubId).select('isActive name');
+      if (!club || club.isActive === false) {
+        return res.status(401).json({
+          success: false,
+          message: 'Your club has been archived. Please contact an admin to restore access.'
+        });
+      }
     }
 
     sendTokenResponse(user, 200, res);
@@ -268,11 +280,8 @@ exports.requestOrganizerPasswordReset = async (req, res, next) => {
     });
 
     const populated = await PasswordResetRequest.findById(request._id)
-      .populate({
-        path: 'organizer',
-        select: 'firstName lastName email organizerProfile clubId',
-        populate: { path: 'clubId', select: 'name' }
-      })
+      .populate('organizer', 'firstName lastName email organizerProfile clubId')
+      .populate('organizer.clubId', 'name')
       .populate('resolvedBy', 'firstName lastName email')
       .populate('history.changedBy', 'firstName lastName email');
 
@@ -299,11 +308,8 @@ exports.getMyOrganizerPasswordResetRequests = async (req, res, next) => {
     }
 
     const requests = await PasswordResetRequest.find({ organizer: req.user.id })
-      .populate({
-        path: 'organizer',
-        select: 'firstName lastName email organizerProfile clubId',
-        populate: { path: 'clubId', select: 'name' }
-      })
+      .populate('organizer', 'firstName lastName email organizerProfile clubId')
+      .populate('organizer.clubId', 'name')
       .populate('resolvedBy', 'firstName lastName email')
       .populate('history.changedBy', 'firstName lastName email')
       .sort('-requestedAt');

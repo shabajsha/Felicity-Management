@@ -4,7 +4,7 @@ import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import { clubsAPI } from '../utils/api';
-import { formatDateShort } from '../utils/helpers';
+import { formatDateShort, formatTime } from '../utils/helpers';
 import './ClubDetailPage.css';
 
 function ClubDetailPage() {
@@ -138,13 +138,13 @@ function ClubDetailPage() {
                   <div className="event-date">
                     <div className="date-day">{new Date(event.date).getDate()}</div>
                     <div className="date-month">
-                      {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
+                      {formatDateShort(event.date)}
                     </div>
                   </div>
                   <div className="event-info">
                     <h3>{event.title}</h3>
                     <div className="event-meta-row">
-                      <span>⏰ {event.time}</span>
+                      <span>⏰ {formatTime(event.time)}</span>
                       <span>📍 {event.location}</span>
                       <span>👥 {event.registered || 0}/{event.capacity || event.maxParticipants || 0}</span>
                     </div>
@@ -169,7 +169,7 @@ function ClubDetailPage() {
                   <div className="event-date">
                     <div className="date-day">{new Date(event.date).getDate()}</div>
                     <div className="date-month">
-                      {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
+                      {formatDateShort(event.date)}
                     </div>
                   </div>
                   <div className="event-info">

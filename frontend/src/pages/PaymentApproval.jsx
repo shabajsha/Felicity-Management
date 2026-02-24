@@ -75,8 +75,8 @@ const PaymentApproval = () => {
     });
   }, [events, user]);
 
-  // Get payment registrations
-  const paymentRegistrations = useMemo(() => {
+  // Get all paid registrations (excluding free)
+  const allPaidRegistrations = useMemo(() => {
     const eventIds = paymentEvents.map(e => (e._id || e.id)?.toString());
     return registrations
       .filter(reg => {
@@ -84,13 +84,17 @@ const PaymentApproval = () => {
         return eventIds.includes(regEventId);
       })
       .filter(reg => reg.paymentStatus !== 'free')
-      .filter(reg => (reg.paymentApprovalStatus || 'pending') !== 'awaiting-proof')
       .map(reg => ({
         ...reg,
         event: reg.event && reg.event.title ? reg.event : paymentEvents.find(e => (e.id || e._id) === (reg.event?._id || reg.eventId || reg.event))
       }))
       .sort((a, b) => new Date(b.registeredAt || b.createdAt) - new Date(a.registeredAt || a.createdAt));
   }, [registrations, paymentEvents]);
+
+  // Payment registrations visible to organizer (proof uploaded)
+  const paymentRegistrations = useMemo(() => {
+    return allPaidRegistrations.filter(reg => (reg.paymentApprovalStatus || 'pending') !== 'awaiting-proof');
+  }, [allPaidRegistrations]);
 
   // Filter payments
   const filteredPayments = useMemo(() => {
@@ -125,12 +129,13 @@ const PaymentApproval = () => {
     const pending = paymentRegistrations.filter(p => getApprovalStatus(p) === 'pending').length;
     const approved = paymentRegistrations.filter(p => getApprovalStatus(p) === 'approved').length;
     const rejected = paymentRegistrations.filter(p => getApprovalStatus(p) === 'rejected').length;
+    const awaitingProof = allPaidRegistrations.filter(p => (p.paymentApprovalStatus || '') === 'awaiting-proof').length;
     const totalRevenue = paymentRegistrations
       .filter(p => p.paymentStatus === 'paid')
       .reduce((sum, p) => sum + (p.amountPaid || p.paymentAmount || p.event?.paymentAmount || 0), 0);
 
-    return { total, pending, approved, rejected, totalRevenue };
-  }, [paymentRegistrations]);
+    return { total, pending, approved, rejected, awaitingProof, totalRevenue };
+  }, [paymentRegistrations, allPaidRegistrations]);
 
   const handleApprove = async (paymentId, paymentAmount) => {
     try {
@@ -197,6 +202,12 @@ const PaymentApproval = () => {
           <h3>{stats.rejected}</h3>
           <p>Rejected</p>
         </div>
+        {stats.awaitingProof > 0 && (
+          <div className="stat-card awaiting">
+            <h3>{stats.awaitingProof}</h3>
+            <p>Awaiting Proof Upload</p>
+          </div>
+        )}
         <div className="stat-card revenue">
           <h3>₹{stats.totalRevenue.toLocaleString()}</h3>
           <p>Total Revenue</p>

@@ -3,6 +3,7 @@ import { useData } from '../context/DataContext';
 import { useToast } from '../components/Toast';
 import { clubsAPI, adminAPI } from '../utils/api';
 import { CLUB_CATEGORIES } from '../utils/constants';
+import { formatDateShort } from '../utils/helpers';
 import './ClubManagement.css';
 
 const ClubManagement = () => {
@@ -27,6 +28,7 @@ const ClubManagement = () => {
     contactPhone: ''
   });
   const [newClubErrors, setNewClubErrors] = useState({});
+  const [createdCreds, setCreatedCreds] = useState(null);
 
   useEffect(() => {
     const fetchClubs = async () => {
@@ -48,6 +50,10 @@ const ClubManagement = () => {
     fetchClubs();
   }, [showError]);
 
+  const getClubEvents = (clubId) => {
+    return events.filter(e => (e.clubId || e.clubId?._id) === clubId);
+  };
+
   const filteredClubs = useMemo(() => {
     let filtered = clubs;
 
@@ -67,7 +73,7 @@ const ClubManagement = () => {
 
     // Sort by total events
     return filtered.sort((a, b) => getClubEvents(b._id).length - getClubEvents(a._id).length);
-  }, [clubs, searchTerm, filterStatus]);
+  }, [clubs, searchTerm, filterStatus, events]);
 
   const stats = useMemo(() => {
     const total = clubs.length;
@@ -121,7 +127,8 @@ const ClubManagement = () => {
       const res = await clubsAPI.create(payload);
       if (res.success) {
         setClubs(prev => [...prev, res.data]);
-        showSuccess('Club created successfully');
+        setCreatedCreds(res.credentials || null);
+        showSuccess('Club created. Copy the credentials below and share with the club head.');
         setNewClub({
           name: '',
           category: '',
@@ -131,7 +138,6 @@ const ClubManagement = () => {
           contactPhone: ''
         });
         setNewClubErrors({});
-        setShowCreateModal(false);
       } else {
         showError(res.message || 'Failed to create club');
       }
@@ -158,6 +164,16 @@ const ClubManagement = () => {
     }
   };
 
+  const handleUnarchiveClub = (clubId) => {
+    clubsAPI.update(clubId, { isActive: true })
+      .then((res) => {
+        const updated = res.data || res;
+        setClubs(prev => prev.map(c => (c._id === clubId ? { ...c, ...updated, isActive: true } : c)));
+        showSuccess('Club unarchived successfully');
+      })
+      .catch(() => showError('Failed to unarchive club'));
+  };
+
   const handleDeleteClubPermanent = (clubId) => {
     if (window.confirm('Permanently delete this club? This cannot be undone.')) {
       const clubEvents = events.filter(e => (e.clubId || e.clubId?._id) === clubId);
@@ -174,10 +190,6 @@ const ClubManagement = () => {
     }
   };
 
-  const getClubEvents = (clubId) => {
-    return events.filter(e => (e.clubId || e.clubId?._id) === clubId);
-  };
-
   return (
     <div className="club-management">
       <div className="page-header">
@@ -187,6 +199,7 @@ const ClubManagement = () => {
             className="btn-primary"
             onClick={() => {
               setShowCreateModal(true);
+              setCreatedCreds(null);
               setNewClubErrors({});
             }}
           >
@@ -289,13 +302,23 @@ const ClubManagement = () => {
                         >
                           👁️
                         </button>
-                        <button
-                          onClick={() => handleArchiveClub(club._id)}
-                          className="btn-delete"
-                          title="Archive"
-                        >
-                          🗄️
-                        </button>
+                        {club.isActive !== false ? (
+                          <button
+                            onClick={() => handleArchiveClub(club._id)}
+                            className="btn-delete"
+                            title="Archive"
+                          >
+                            🗄️
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUnarchiveClub(club._id)}
+                            className="btn-secondary"
+                            title="Unarchive"
+                          >
+                            ♻️
+                          </button>
+                        )}
                         <button
                           onClick={() => handleDeleteClubPermanent(club._id)}
                           className="btn-delete"
@@ -387,7 +410,7 @@ const ClubManagement = () => {
                   {getClubEvents(selectedClub._id).slice(0, 5).map(event => (
                     <div key={event._id || event.id} className="event-item">
                       <strong>{event.title}</strong>
-                      <span>{new Date(event.date).toLocaleDateString()}</span>
+                      <span>{formatDateShort(event.date)}</span>
                     </div>
                   ))}
                   {getClubEvents(selectedClub._id).length === 0 && (
@@ -407,13 +430,21 @@ const ClubManagement = () => {
       )}
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => !createdCreds && setShowCreateModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Create Club</h2>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
+              <h2>{createdCreds ? 'Club Created – Share These Credentials' : 'Create Club'}</h2>
+              <button className="modal-close" onClick={() => { setShowCreateModal(false); setCreatedCreds(null); }}>×</button>
             </div>
             <div className="modal-body">
+              {createdCreds ? (
+                <div className="credentials-box credentials-box-prominent">
+                  <p><strong>System-generated login for the club head (share with them)</strong></p>
+                  <p><strong>Email:</strong> <code>{createdCreds.email}</code></p>
+                  <p><strong>Password:</strong> <code>{createdCreds.password}</code></p>
+                  <p className="warning-text">Copy and share these securely now. They cannot be retrieved later.</p>
+                </div>
+              ) : (
               <div className="form-grid">
                 <label className="form-group">
                   Club Name *
@@ -489,12 +520,19 @@ const ClubManagement = () => {
                   />
                 </label>
               </div>
+              )}
             </div>
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="btn-primary" disabled={creating} onClick={handleCreateClub}>
-                {creating ? 'Creating...' : 'Create Club'}
-              </button>
+              {createdCreds ? (
+                <button className="btn-primary" onClick={() => { setShowCreateModal(false); setCreatedCreds(null); }}>Done</button>
+              ) : (
+                <>
+                  <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                  <button className="btn-primary" disabled={creating} onClick={handleCreateClub}>
+                    {creating ? 'Creating...' : 'Create Club'}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -8,6 +8,16 @@ import { REGISTRATION_STATUS, EVENT_TYPES } from '../utils/constants';
 import { useToast } from '../components/Toast.jsx';
 import './ParticipantDashboard.css';
 
+const getPaymentProofUrl = (proofPath) => {
+  if (!proofPath) return '';
+  if (/^https?:\/\//i.test(proofPath)) return proofPath;
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+  let origin = 'http://localhost:5000';
+  try { origin = new URL(apiBase).origin; } catch (_) { /* fallback */ }
+  const normalizedPath = proofPath.startsWith('/') ? proofPath : `/${proofPath}`;
+  return `${origin}${normalizedPath}`;
+};
+
 function ParticipantDashboard() {
   const { user } = useAuth();
   const { events } = useData();
@@ -112,7 +122,7 @@ function ParticipantDashboard() {
   const renderEventCard = (registration) => {
     const { event } = registration;
     if (!event) return null;
-    
+
     const daysUntil = getDaysUntilEvent(event.date);
 
     return (
@@ -121,7 +131,7 @@ function ParticipantDashboard() {
           <div className="event-date-badge">
             <div className="date-day">{new Date(event.date).getDate()}</div>
             <div className="date-month">
-              {new Date(event.date).toLocaleDateString('en-US', { month: 'short' })}
+              {formatDateShort(event.date)}
             </div>
           </div>
         </div>
@@ -162,22 +172,56 @@ function ParticipantDashboard() {
               View Details →
             </Link>
           </div>
-          {event.type === EVENT_TYPES.MERCHANDISE && registration.paymentStatus === 'pending' && (
-            <div className="payment-proof">
-              <label className="upload-label">
-                Upload payment proof
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      handleUploadProof(registration._id || registration.id, file);
-                    }
-                  }}
-                  disabled={uploadingId === (registration._id || registration.id)}
-                />
-              </label>
+          {event.type === EVENT_TYPES.MERCHANDISE && registration.paymentAmount > 0 && (
+            <div className="payment-proof-section">
+              {registration.paymentApprovalStatus === 'awaiting-proof' && (
+                <div className="payment-proof awaiting">
+                  <span className="proof-status-badge awaiting">⚠️ Awaiting Payment Proof</span>
+                  <label className="upload-label">
+                    {uploadingId === (registration._id || registration.id) ? 'Uploading...' : 'Upload Screenshot'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadProof(registration._id || registration.id, file);
+                      }}
+                      disabled={uploadingId === (registration._id || registration.id)}
+                    />
+                  </label>
+                  <p className="proof-hint">Upload your UPI / bank transfer screenshot to proceed</p>
+                </div>
+              )}
+              {registration.paymentApprovalStatus === 'pending' && (
+                <div className="payment-proof submitted">
+                  <span className="proof-status-badge pending">🕐 Proof Submitted — Awaiting Organizer Approval</span>
+                  {registration.paymentScreenshot && (
+                    <a href={getPaymentProofUrl(registration.paymentScreenshot)} target="_blank" rel="noreferrer" className="proof-thumbnail-link">
+                      View uploaded proof ↗
+                    </a>
+                  )}
+                </div>
+              )}
+              {registration.paymentApprovalStatus === 'approved' && (
+                <span className="proof-status-badge approved">✅ Payment Approved</span>
+              )}
+              {registration.paymentApprovalStatus === 'rejected' && (
+                <div className="payment-proof rejected">
+                  <span className="proof-status-badge rejected">❌ Payment Rejected — Re-upload Proof</span>
+                  <label className="upload-label">
+                    {uploadingId === (registration._id || registration.id) ? 'Uploading...' : 'Re-upload Screenshot'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadProof(registration._id || registration.id, file);
+                      }}
+                      disabled={uploadingId === (registration._id || registration.id)}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>

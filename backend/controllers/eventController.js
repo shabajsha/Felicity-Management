@@ -216,12 +216,20 @@ exports.getEvents = async (req, res, next) => {
 
     // Apply preference-based ordering if user is authenticated and has preferences
     if (req.user && req.user.preferences && !reqQuery.trending && !req.query.sort) {
-      const userInterests = req.user.preferences.interests || [];
+      const userInterests = (req.user.preferences.interests || []).map(i => (i || '').toLowerCase());
       const userFollowedClubs = (req.user.preferences.followedClubs || []).map(club =>
         typeof club === 'object' ? club._id.toString() : club.toString()
       );
 
-      // Score each event based on user preferences
+      const interestMatches = (value) => {
+        if (!value) return false;
+        const v = String(value).toLowerCase();
+        return userInterests.some(interest =>
+          interest === v || v.includes(interest) || interest.includes(v)
+        );
+      };
+
+      // Score each event based on user preferences (ordering + recommendations)
       events = events.map(event => {
         let score = 0;
 
@@ -230,14 +238,15 @@ exports.getEvents = async (req, res, next) => {
           score += 2;
         }
 
+        // +1 point if event category matches a user interest (e.g. Sports, Music, Technical)
+        if (event.category && interestMatches(event.category)) {
+          score += 1;
+        }
+
         // +1 point for each matching interest tag
         if (event.tags && Array.isArray(event.tags)) {
           const matchingTags = event.tags.filter(tag =>
-            userInterests.some(interest =>
-              interest.toLowerCase() === tag.toLowerCase() ||
-              tag.toLowerCase().includes(interest.toLowerCase()) ||
-              interest.toLowerCase().includes(tag.toLowerCase())
-            )
+            tag && interestMatches(tag)
           );
           score += matchingTags.length;
         }

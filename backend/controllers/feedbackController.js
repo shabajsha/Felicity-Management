@@ -63,26 +63,26 @@ exports.submitFeedback = async (req, res, next) => {
       });
     }
 
-    // Check if event has passed
-    if (new Date(event.date) > new Date()) {
+    // Check if event has completed (use endDate when present)
+    const eventEnd = event.endDate ? new Date(event.endDate) : new Date(event.date);
+    if (eventEnd > new Date()) {
       return res.status(400).json({
         success: false,
         message: 'Cannot submit feedback for upcoming events'
       });
     }
 
-    // Check if user attended the event
+    // Check if user is registered for the event
     const registration = await Registration.findOne({
       event: eventId,
       user: req.user.id,
-      status: 'confirmed',
-      checkedIn: true
+      status: 'confirmed'
     });
 
     if (!registration) {
       return res.status(403).json({
         success: false,
-        message: 'Only participants who attended the event can submit feedback'
+        message: 'Only confirmed participants can submit feedback'
       });
     }
 
@@ -153,8 +153,8 @@ exports.getEventFeedback = async (req, res, next) => {
     const [allFeedbacks, filteredFeedbacks] = await Promise.all([
       Feedback.find(baseQuery).populate('user', 'firstName lastName'),
       Feedback.find(filteredQuery)
-      .populate('user', 'firstName lastName')
-      .sort(sort)
+        .populate('user', 'firstName lastName')
+        .sort(sort)
     ]);
 
     const stats = buildFeedbackStats(allFeedbacks);

@@ -1,17 +1,59 @@
 const Club = require('../models/Club');
 const User = require('../models/User');
 const Event = require('../models/Event');
+const { generatePassword, generateOrganizerEmail } = require('../utils/organizerCredentials');
+const { sendOrganizerProvisionMail } = require('../utils/mailer');
 
-// @desc    Create a new club
+// @desc    Create a new club and a system-generated organizer account (head coordinator)
 // @route   POST /api/clubs
 // @access  Private (Admin)
 exports.createClub = async (req, res, next) => {
   try {
     const club = await Club.create(req.body);
 
+    // Create organizer account for this club with system-generated email and password
+    const email = await generateOrganizerEmail(club.name);
+    const password = generatePassword();
+    const presidentParts = (club.president || '').trim().split(/\s+/);
+    const firstName = presidentParts[0] || 'Club';
+    const lastName = presidentParts.slice(1).join(' ') || 'Head';
+
+    const organizer = await User.create({
+      firstName,
+      lastName,
+      email,
+      contactNumber: club.contact?.phone || '',
+      role: 'Organizer',
+      password,
+      clubId: club._id,
+      organizerProfile: {
+        name: club.name,
+        category: club.category,
+        description: club.description,
+        contactEmail: club.contact?.email || email,
+        contactNumber: club.contact?.phone || ''
+      }
+    });
+
+    club.headCoordinator = organizer._id;
+    club.organizers = [organizer._id];
+    await club.save();
+
+    await sendOrganizerProvisionMail({
+      to: organizer.email,
+      organizerName: club.name,
+      password
+    }).catch(() => {});
+
     res.status(201).json({
       success: true,
-      data: club
+      message: 'Club created. Share the credentials below with the club head.',
+      data: club,
+      credentials: {
+        email: organizer.email,
+        password,
+        note: 'Share these credentials securely with the club head. They cannot be retrieved later.'
+      }
     });
   } catch (error) {
     next(error);

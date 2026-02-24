@@ -7,7 +7,7 @@ import { discussionsAPI } from '../utils/api';
 import { formatDate } from '../utils/helpers.js';
 import './DiscussionForum.css';
 
-const REACTIONS = ['👍', '❤️', '🔥', '👏', '❓'];
+const REACTIONS = ['+1', 'Heart', 'Hot', 'Clap', '?'];
 
 function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
   const { eventId: eventIdFromRoute } = useParams();
@@ -29,6 +29,12 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
   const [newItemsCount, setNewItemsCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const baselineRef = useRef({});
+  const selectedThreadRef = useRef(null);
+
+  // Keep the ref in sync with state
+  useEffect(() => {
+    selectedThreadRef.current = selectedThread;
+  }, [selectedThread]);
 
   useEffect(() => {
     const fetchDiscussions = async (background = false) => {
@@ -68,8 +74,9 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
 
           setDiscussions(incoming);
 
-          if (selectedThread) {
-            const selectedId = selectedThread._id || selectedThread.id;
+          const currentSelected = selectedThreadRef.current;
+          if (currentSelected) {
+            const selectedId = currentSelected._id || currentSelected.id;
             const updatedSelected = incoming.find((item) => (item._id || item.id) === selectedId);
             if (updatedSelected) {
               setSelectedThread(updatedSelected);
@@ -93,7 +100,7 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
     }, 8000);
 
     return () => clearInterval(poll);
-  }, [eventId, selectedThread, showSuccess]);
+  }, [eventId, showSuccess]);
 
   const event = events.find(e => (e._id || e.id) === eventId);
 
@@ -112,7 +119,7 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
 
   const filteredDiscussions = useMemo(() => {
     let filtered = eventDiscussions;
-    
+
     if (filterCategory !== 'All') {
       filtered = filtered.filter(d => d.category === filterCategory);
     }
@@ -126,7 +133,7 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
       }
       );
     } else if (sortBy === 'popular') {
-      filtered = [...filtered].sort((a, b) => 
+      filtered = [...filtered].sort((a, b) =>
         (b.replies?.length || 0) - (a.replies?.length || 0)
       );
     } else if (sortBy === 'unanswered') {
@@ -321,11 +328,11 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
         <div className="header-top">
           {!embedded && (
             <Link to={`/event/${eventId}`} className="btn-back">
-              ← Back to Event
+              Back to Event
             </Link>
           )}
           <div className="header-info">
-            <h1>💬 Discussion Forum</h1>
+            <h1>Discussion Forum</h1>
             <p className="event-title">{event.title}</p>
             {newItemsCount > 0 && (
               <p className="live-update-pill">{newItemsCount} new updates</p>
@@ -333,7 +340,7 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
           </div>
         </div>
         <div className="forum-header-actions">
-          {isRefreshing && <span className="refresh-indicator">Refreshing…</span>}
+          {isRefreshing && <span className="refresh-indicator">Refreshing...</span>}
           <button
             className="btn btn-primary"
             onClick={() => setShowNewThread(true)}
@@ -392,13 +399,13 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
           </div>
         ) : (
           filteredDiscussions.map(thread => (
-            <div 
-              key={thread._id || thread.id} 
+            <div
+              key={thread._id || thread.id}
               className={`thread-card ${thread.isPinned ? 'pinned' : ''}`}
               onClick={() => openThread(thread)}
             >
-              {thread.isPinned && <div className="pin-badge">📌 Pinned</div>}
-              {thread.isAnnouncement && <div className="announcement-badge">📢 Announcement</div>}
+              {thread.isPinned && <div className="pin-badge">Pinned</div>}
+              {thread.isAnnouncement && <div className="announcement-badge">Announcement</div>}
               <div className="thread-header">
                 <h3>{thread.title}</h3>
                 <span className={`category-badge ${thread.category.toLowerCase()}`}>
@@ -416,8 +423,7 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
                   <span>{formatDate(thread.createdAt)}</span>
                 </div>
                 <div className="thread-stats">
-                  <span>👁️ {thread.views || thread.viewCount || 0}</span>
-                  <span>💬 {thread.replyCount || thread.replies?.length || 0} replies</span>
+                  <span>{thread.replyCount || thread.replies?.length || 0} replies</span>
                 </div>
               </div>
 
@@ -447,12 +453,12 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Create New Discussion</h2>
-              <button className="close-btn" onClick={() => setShowNewThread(false)}>×</button>
+              <button className="close-btn" onClick={() => setShowNewThread(false)}>X</button>
             </div>
             <div className="modal-body">
               <div className="form-group">
                 <label>Category</label>
-                <select 
+                <select
                   value={newThread.category}
                   onChange={(e) => {
                     const value = e.target.value;
@@ -510,9 +516,9 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
                   {selectedThread.category}
                 </span>
               </div>
-              <button className="close-btn" onClick={() => setSelectedThread(null)}>×</button>
+              <button className="close-btn" onClick={() => setSelectedThread(null)}>X</button>
             </div>
-            
+
             <div className="modal-body thread-detail">
               {/* Original Post */}
               <div className="post original-post">
@@ -544,17 +550,17 @@ function DiscussionForum({ eventId: eventIdProp, embedded = false }) {
                 </div>
                 {isOrganizer && (
                   <div className="post-actions">
-                    <button 
+                    <button
                       className="btn-action"
                       onClick={() => handlePinThread(selectedThread._id || selectedThread.id)}
                     >
-                      {selectedThread.isPinned ? '📌 Unpin' : '📌 Pin'}
+                      {selectedThread.isPinned ? 'Unpin' : 'Pin'}
                     </button>
-                    <button 
+                    <button
                       className="btn-action danger"
                       onClick={() => handleDeleteThread(selectedThread._id || selectedThread.id)}
                     >
-                      🗑️ Delete
+                      Delete
                     </button>
                   </div>
                 )}

@@ -4,7 +4,31 @@ const Event = require('../models/Event');
 const User = require('../models/User');
 const Team = require('../models/Team');
 const { issueTicket } = require('../utils/tickets');
-const { normalizeEligibility } = require('../utils/eligibility');
+
+const normalizeEligibility = (eligibility) => {
+  if (!eligibility) return 'All';
+  const value = String(eligibility).trim().toLowerCase();
+
+  if (
+    value === 'all' ||
+    value === 'both' ||
+    value.includes('iiit+external') ||
+    value.includes('iiit & external') ||
+    value.includes('iiit and external')
+  ) {
+    return 'All';
+  }
+
+  if (value.includes('iiit')) {
+    return value.includes('non') || value.includes('external') ? 'Non-IIIT' : 'IIIT';
+  }
+
+  if (value.includes('external') || value.includes('non')) {
+    return 'Non-IIIT';
+  }
+
+  return 'All';
+};
 
 const generateInviteToken = () => crypto.randomBytes(24).toString('hex');
 const generateInviteCode = () => `TEAM-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -329,12 +353,12 @@ exports.getMyPendingTeamInvites = async (req, res, next) => {
         members: team.members,
         myInvite: myInvite
           ? {
-            id: myInvite._id,
-            email: myInvite.email,
-            status: myInvite.status,
-            createdAt: myInvite.createdAt,
-            respondedAt: myInvite.respondedAt
-          }
+              id: myInvite._id,
+              email: myInvite.email,
+              status: myInvite.status,
+              createdAt: myInvite.createdAt,
+              respondedAt: myInvite.respondedAt
+            }
           : null,
         inviteTracking: (team.invites || []).map((invite) => ({
           id: invite._id,
@@ -667,6 +691,14 @@ exports.registerForEvent = async (req, res, next) => {
       });
     }
 
+    // Check if registrations are closed for this event
+    if (event.isClosed) {
+      return res.status(400).json({
+        success: false,
+        message: 'Registrations are closed for this event'
+      });
+    }
+
     // Check eligibility
     const normalizedEligibility = normalizeEligibility(event.eligibility);
     if (normalizedEligibility === 'IIIT' && req.user.participantType !== 'IIIT') {
@@ -751,7 +783,8 @@ exports.registerForEvent = async (req, res, next) => {
 
     // Merchandise validation and pricing
     let merchandisePayload = null;
-    let paymentAmount = event.registrationFee || 0;
+    // Prefer explicit registrationFee, fall back to legacy paymentAmount field if present
+    let paymentAmount = Number(event.registrationFee || event.paymentAmount || 0);
     let paymentStatus = (paymentAmount > 0) ? 'pending' : 'free';
     let paymentApprovalStatus = paymentAmount > 0 ? 'pending' : 'not-required';
     let registrationStatus = (paymentAmount > 0) ? 'pending' : 'confirmed';
@@ -874,7 +907,7 @@ exports.registerForEvent = async (req, res, next) => {
 exports.getMyRegistrations = async (req, res, next) => {
   try {
     const registrations = await Registration.find({ user: req.user.id })
-      .populate('event', 'title date venue organizer category registrationFee')
+      .populate('event', 'title date venue organizer category fees')
       .sort('-createdAt');
 
     res.status(200).json({
@@ -1017,15 +1050,6 @@ exports.cancelRegistration = async (req, res, next) => {
     registration.status = 'rejected';
     await registration.save();
 
-    // If this registration belongs to a team, update team status
-    if (registration.team) {
-      const team = await Team.findById(registration.team);
-      if (team && team.status !== 'cancelled') {
-        team.status = 'cancelled';
-        await team.save();
-      }
-    }
-
     res.status(200).json({
       success: true,
       data: registration
@@ -1093,7 +1117,7 @@ exports.updatePaymentStatus = async (req, res, next) => {
     if (paymentApprovalStatus) {
       registration.paymentApprovalStatus = paymentApprovalStatus;
     }
-
+    
     if (paymentMethod) registration.paymentMethod = paymentMethod;
     if (transactionId) registration.transactionId = transactionId;
     if (amountPaid !== undefined) registration.amountPaid = amountPaid;

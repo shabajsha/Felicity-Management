@@ -20,6 +20,7 @@ const ManageEventsPage = () => {
   const [registrations, setRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [publishingIds, setPublishingIds] = useState([]);
+  const [closingIds, setClosingIds] = useState([]);
 
   useEffect(() => {
     const load = async () => {
@@ -103,6 +104,29 @@ const ManageEventsPage = () => {
     }
   };
 
+  const handleCloseRegistrations = async (eventId) => {
+    try {
+      setClosingIds(prev => [...prev, eventId]);
+      const response = await eventsAPI.update(eventId, { isClosed: true });
+      if (!response.success) {
+        showError(response.message || 'Failed to close registrations');
+        return;
+      }
+
+      try {
+        await updateEvent(eventId, { isClosed: true });
+      } catch {
+        // Local cache sync is best-effort only
+      }
+
+      showSuccess('Registrations closed for this event');
+    } catch (error) {
+      showError(error.message || 'Failed to close registrations');
+    } finally {
+      setClosingIds(prev => prev.filter(id => id !== eventId));
+    }
+  };
+
   const handlePublishDraft = async (eventId) => {
     try {
       setPublishingIds(prev => [...prev, eventId]);
@@ -143,6 +167,7 @@ const ManageEventsPage = () => {
     const eventRegs = getEventRegistrations(eventId);
     const status = getEventStatus(event.date);
     const reviewStatus = (event.status || '').toLowerCase();
+    const isClosed = Boolean(event.isClosed);
     const pendingCount = eventRegs.filter(r => r.status === 'pending').length;
     const confirmedCount = eventRegs.filter(r => r.status === 'confirmed').length;
 
@@ -177,6 +202,12 @@ const ManageEventsPage = () => {
               <span className="stat-value pending">{pendingCount}</span>
             </div>
           )}
+          {isClosed && (
+            <div className="stat">
+              <span className="stat-label">Registrations</span>
+              <span className="stat-value pending">Closed</span>
+            </div>
+          )}
         </div>
 
         <div className="event-card-actions">
@@ -194,6 +225,15 @@ const ManageEventsPage = () => {
               <Link to={`/organizer/events/edit/${eventId}`} className="btn-outline">
                 Edit
               </Link>
+              {!isClosed && (
+                <button
+                  className="btn-warning-small"
+                  onClick={() => handleCloseRegistrations(eventId)}
+                  disabled={closingIds.includes(eventId)}
+                >
+                  {closingIds.includes(eventId) ? 'Closing...' : 'Close Registrations'}
+                </button>
+              )}
             </>
           )}
           {reviewStatus === 'draft' && (

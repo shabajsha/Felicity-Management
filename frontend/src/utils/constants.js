@@ -139,6 +139,7 @@ export const FORM_FIELD_TYPES = {
 export const VALIDATION = {
   PASSWORD_MIN_LENGTH: 6,
   EMAIL_IIIT_DOMAIN: '@iiit.ac.in',
+  EMAIL_IIIT_DOMAINS: ['@iiit.ac.in', '@students.iiit.ac.in', '@research.iiit.ac.in'],
   EVENT_TITLE_MIN_LENGTH: 3,
   EVENT_DESCRIPTION_MIN_LENGTH: 20,
   EVENT_LOCATION_MIN_LENGTH: 5,

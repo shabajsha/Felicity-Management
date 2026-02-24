@@ -5,8 +5,12 @@ exports.isValidEmail = (email) => {
 };
 
 // IIIT email validation
+const IIIT_EMAIL_DOMAINS = ['@iiit.ac.in', '@students.iiit.ac.in', '@research.iiit.ac.in'];
+
 exports.isIIITEmail = (email) => {
-  return email.toLowerCase().endsWith('@iiit.ac.in');
+  if (!email) return false;
+  const lower = email.toLowerCase();
+  return IIIT_EMAIL_DOMAINS.some((domain) => lower.endsWith(domain));
 };
 
 // Phone number validation (Indian format)

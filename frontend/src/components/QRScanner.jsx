@@ -134,7 +134,7 @@ function QRScanner() {
       status: 'success'
     }, ...prev]);
 
-    showSuccess(`✓ ${registration.participantName} checked in successfully!`);
+    showSuccess(`${registration.participantName} checked in successfully!`);
     setManualTicketId('');
   };
 
@@ -184,7 +184,7 @@ function QRScanner() {
       status: 'success'
     }, ...prev]);
 
-    showSuccess(`✓ ${registration.participantName} checked in!`);
+    showSuccess(`${registration.participantName} checked in!`);
   };
 
   return (
@@ -192,7 +192,7 @@ function QRScanner() {
       <div className="scanner-header">
         <div className="header-content">
           <button onClick={() => navigate('/organizer/events')} className="btn-back">
-            ← Back
+            Back
           </button>
           <div className="header-info">
             <h1>Check-In Scanner</h1>
@@ -204,28 +204,28 @@ function QRScanner() {
       {/* Stats Cards */}
       <div className="scanner-stats">
         <div className="stat-card">
-          <div className="stat-icon">👥</div>
+          <div className="stat-icon">Total</div>
           <div className="stat-content">
             <div className="stat-value">{stats.total}</div>
             <div className="stat-label">Total Registrations</div>
           </div>
         </div>
         <div className="stat-card success">
-          <div className="stat-icon">✓</div>
+          <div className="stat-icon">In</div>
           <div className="stat-content">
             <div className="stat-value">{stats.checkedIn}</div>
             <div className="stat-label">Checked In</div>
           </div>
         </div>
         <div className="stat-card pending">
-          <div className="stat-icon">⏳</div>
+          <div className="stat-icon">Pending</div>
           <div className="stat-content">
             <div className="stat-value">{stats.pending}</div>
             <div className="stat-label">Pending</div>
           </div>
         </div>
         <div className="stat-card percentage">
-          <div className="stat-icon">📊</div>
+          <div className="stat-icon">%</div>
           <div className="stat-content">
             <div className="stat-value">
               {stats.total > 0 ? Math.round((stats.checkedIn / stats.total) * 100) : 0}%
@@ -238,7 +238,7 @@ function QRScanner() {
       {/* Manual Check-In Section */}
       <div className="scanner-section">
         <div className="section-card">
-          <h2>📱 Manual Check-In</h2>
+          <h2>Manual Check-In</h2>
           <p className="section-description">
             Enter the ticket ID to check in participants manually
           </p>
@@ -261,7 +261,7 @@ function QRScanner() {
           </div>
 
           <div className="scanner-note">
-            <span className="note-icon">💡</span>
+            <span className="note-icon">i</span>
             <span>Tip: Participants can find their Ticket ID in their dashboard</span>
           </div>
         </div>
@@ -271,12 +271,12 @@ function QRScanner() {
       {scanHistory.length > 0 && (
         <div className="scanner-section">
           <div className="section-card">
-            <h2>📜 Recent Check-Ins</h2>
+            <h2>Recent Check-Ins</h2>
             <div className="scan-history">
               {scanHistory.slice(0, 5).map((scan, index) => (
                 <div key={index} className={`history-item ${scan.status}`}>
                   <div className="history-icon">
-                    {scan.status === 'success' ? '✓' : '✗'}
+                    {scan.status === 'success' ? 'OK' : 'X'}
                   </div>
                   <div className="history-details">
                     <div className="history-name">{scan.participantName}</div>
@@ -297,7 +297,7 @@ function QRScanner() {
       <div className="scanner-section">
         <div className="section-card">
           <div className="section-header">
-            <h2>👥 All Registrations</h2>
+            <h2>All Registrations</h2>
             <input
               type="text"
               className="search-input"
@@ -317,7 +317,7 @@ function QRScanner() {
                 <div key={reg._id || reg.id} className={`registration-item ${reg.checkedIn ? 'checked-in' : ''}`}>
                   <div className="reg-info">
                     <div className="reg-icon">
-                      {reg.checkedIn ? '✓' : '👤'}
+                      {reg.checkedIn ? 'OK' : 'User'}
                     </div>
                     <div className="reg-details">
                       <div className="reg-name">{reg.participantName}</div>

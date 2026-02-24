@@ -1,9 +1,20 @@
 const buildEventMessage = (event, baseUrl) => {
   const eventUrl = baseUrl ? `${baseUrl.replace(/\/$/, '')}/event/${event._id}` : '';
   const fee = event.registrationFee ? `₹${event.registrationFee}` : 'Free';
-  const deadline = event.registrationDeadline ? new Date(event.registrationDeadline).toLocaleDateString('en-US') : 'TBD';
-  const start = event.date ? new Date(event.date).toLocaleDateString('en-US') : 'TBD';
-  const end = event.endDate ? new Date(event.endDate).toLocaleDateString('en-US') : start;
+
+  const formatDMY = (value) => {
+    if (!value) return 'TBD';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'TBD';
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const deadline = event.registrationDeadline ? formatDMY(event.registrationDeadline) : 'TBD';
+  const start = event.date ? formatDMY(event.date) : 'TBD';
+  const end = event.endDate ? formatDMY(event.endDate) : start;
 
   const lines = [
     `**${event.title}**`,

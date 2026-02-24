@@ -9,7 +9,7 @@ const getAuthToken = () => {
 // Helper function for API calls
 const apiCall = async (endpoint, options = {}) => {
   const token = getAuthToken();
-
+  
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -20,14 +20,14 @@ const apiCall = async (endpoint, options = {}) => {
   };
 
   try {
-
+    console.log('API Request:', `${API_BASE_URL}${endpoint}`, config);
     const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
     const data = await response.json();
 
-
+    console.log('API Response:', response.status, data);
 
     if (!response.ok) {
-      throw new Error(data.message || `API request failed with status ${response.status}`);
+      throw new Error(data.message || data.error || `API request failed with status ${response.status}`);
     }
 
     return data;

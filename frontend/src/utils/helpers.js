@@ -18,12 +18,15 @@ export const getOrganizerName = (organizer, organizerName) => {
  */
 export const formatDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+  if (Number.isNaN(date.getTime())) return 'Invalid date';
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' });
+
+  // e.g. "Monday, 24/02/2026"
+  return `${weekday}, ${day}/${month}/${year}`;
 };
 
 /**
@@ -31,11 +34,14 @@ export const formatDate = (dateString) => {
  */
 export const formatDateShort = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+  if (Number.isNaN(date.getTime())) return 'Invalid date';
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+
+  // dd/mm/yyyy
+  return `${day}/${month}/${year}`;
 };
 
 /**
@@ -43,13 +49,21 @@ export const formatDateShort = (dateString) => {
  */
 export const formatEventDate = (dateString) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+  if (Number.isNaN(date.getTime())) return 'Invalid date';
+
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+
+  const datePart = `${day}/${month}/${year}`;
+
+  const hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+
+  // dd/mm/yyyy, hh:mm AM/PM IST
+  return `${datePart}, ${displayHour}:${minutes} ${ampm} IST`;
 };
 
 /**
@@ -63,7 +77,8 @@ export const formatTime = (timeString) => {
   const hour = parseInt(hours);
   const ampm = hour >= 12 ? 'PM' : 'AM';
   const displayHour = hour % 12 || 12;
-  return `${displayHour}:${minutes} ${ampm}`;
+  // Display time explicitly in IST
+  return `${displayHour}:${minutes} ${ampm} IST`;
 };
 
 /**
@@ -78,7 +93,10 @@ export const isValidEmail = (email) => {
  * Validate IIIT email
  */
 export const isIIITEmail = (email) => {
-  return email.toLowerCase().endsWith(VALIDATION.EMAIL_IIIT_DOMAIN);
+  if (!email) return false;
+  const lower = email.toLowerCase();
+  return (VALIDATION.EMAIL_IIIT_DOMAINS || [VALIDATION.EMAIL_IIIT_DOMAIN])
+    .some((domain) => lower.endsWith(domain));
 };
 
 /**

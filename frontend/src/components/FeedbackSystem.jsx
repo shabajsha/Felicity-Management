@@ -102,6 +102,12 @@ function FeedbackSystem() {
     r => (r.event?._id || r.eventId || r.event)?.toString() === eventId?.toString()
   );
 
+  const eventHasEnded = useMemo(() => {
+    if (!event) return false;
+    const end = new Date(event.endDate || event.date);
+    return end <= new Date();
+  }, [event]);
+
   const eventFeedbacks = useMemo(() => feedbacks, [feedbacks]);
 
   const getAuthorName = (feedback) => {
@@ -161,7 +167,9 @@ function FeedbackSystem() {
   );
 
   const canSubmitFeedback =
-    userRegistration && userRegistration.status === 'confirmed' && userRegistration.checkedIn;
+    eventHasEnded &&
+    userRegistration &&
+    userRegistration.status === 'confirmed';
 
   const handleSubmitFeedback = async () => {
     if (!newFeedback.comment.trim()) {
@@ -171,6 +179,11 @@ function FeedbackSystem() {
 
     if (hasUserSubmittedFeedback) {
       showError('You have already submitted feedback for this event');
+      return;
+    }
+
+    if (!eventHasEnded) {
+      showError('Feedback can be submitted only after the event ends');
       return;
     }
 
@@ -243,15 +256,15 @@ function FeedbackSystem() {
       <div className="feedback-header">
         <div className="header-content">
           <Link to={`/event/${eventId}`} className="btn-back">
-            ← Back to Event
+            Back to Event
           </Link>
           <div className="header-info">
-            <h1>⭐ Event Feedback</h1>
+            <h1>Event Feedback</h1>
             <p className="event-title">{event.title}</p>
           </div>
         </div>
         {canSubmitFeedback && !hasUserSubmittedFeedback && (
-          <button 
+          <button
             className="btn btn-primary"
             onClick={() => setShowFeedbackForm(true)}
           >
@@ -268,7 +281,7 @@ function FeedbackSystem() {
             <div className="rating-stars">
               {[1, 2, 3, 4, 5].map(star => (
                 <span key={star} className={star <= Math.round(averageRating) ? 'star filled' : 'star'}>
-                  ★
+                  *
                 </span>
               ))}
             </div>
@@ -284,9 +297,9 @@ function FeedbackSystem() {
               const percentage = totalFeedbacks > 0 ? (count / totalFeedbacks) * 100 : 0;
               return (
                 <div key={rating} className="rating-bar-row">
-                  <span className="rating-label">{rating} ★</span>
+                  <span className="rating-label">{rating} *</span>
                   <div className="rating-bar">
-                    <div 
+                    <div
                       className="rating-bar-fill"
                       style={{ width: `${percentage}%` }}
                     ></div>
@@ -299,7 +312,7 @@ function FeedbackSystem() {
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon">👍</div>
+          <div className="stat-icon">%</div>
           <div className="stat-content">
             <div className="stat-value">{recommendationRate}%</div>
             <div className="stat-label">Would Recommend</div>
@@ -327,7 +340,7 @@ function FeedbackSystem() {
             </div>
           )}
         </div>
-        
+
         {eventFeedbacks.length === 0 ? (
           <div className="empty-state">
             <p>No feedback yet. Be the first to share your experience!</p>
@@ -346,13 +359,13 @@ function FeedbackSystem() {
                       <div className="feedback-date">{formatDate(feedback.createdAt)}</div>
                     </div>
                   </div>
-                  <div className="feedback-rating">
-                    {[1, 2, 3, 4, 5].map(star => (
-                      <span key={star} className={star <= feedback.rating ? 'star filled' : 'star'}>
-                        ★
-                      </span>
-                    ))}
-                  </div>
+                <div className="feedback-rating">
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <span key={star} className={star <= feedback.rating ? 'star filled' : 'star'}>
+                      *
+                    </span>
+                  ))}
+                </div>
                 </div>
 
                 <div className="feedback-category">
@@ -363,11 +376,11 @@ function FeedbackSystem() {
                 <p className="feedback-comment">{feedback.comment}</p>
 
                 <div className="feedback-footer">
-                  <button 
+                  <button
                     className="btn-helpful"
                     onClick={() => handleMarkHelpful(feedback._id || feedback.id)}
                   >
-                    👍 Helpful ({feedback.helpful || 0})
+                    Mark as helpful ({feedback.helpful || 0})
                   </button>
                 </div>
               </div>
@@ -382,7 +395,7 @@ function FeedbackSystem() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Submit Your Feedback</h2>
-              <button className="close-btn" onClick={() => setShowFeedbackForm(false)}>×</button>
+              <button className="close-btn" onClick={() => setShowFeedbackForm(false)}>X</button>
             </div>
 
             <div className="modal-body">
@@ -396,7 +409,7 @@ function FeedbackSystem() {
                       className={`star-btn ${rating <= newFeedback.rating ? 'selected' : ''}`}
                       onClick={() => setNewFeedback({ ...newFeedback, rating })}
                     >
-                      ★
+                      *
                     </button>
                   ))}
                   <span className="rating-text">{newFeedback.rating} out of 5</span>
@@ -445,15 +458,19 @@ function FeedbackSystem() {
       {/* User's Feedback Notice */}
       {hasUserSubmittedFeedback && (
         <div className="user-feedback-notice">
-          <span className="notice-icon">✓</span>
+          <span className="notice-icon">!</span>
           <span>You have already submitted feedback for this event. Thank you!</span>
         </div>
       )}
 
       {!canSubmitFeedback && user && (
         <div className="user-feedback-notice warning">
-          <span className="notice-icon">ℹ️</span>
-          <span>You must be registered for this event to submit feedback.</span>
+          <span className="notice-icon">i</span>
+          <span>
+            {!eventHasEnded
+              ? `Feedback will open after the event ends (${formatDate(event.endDate || event.date)}).`
+              : 'You must have a confirmed registration to submit feedback.'}
+          </span>
         </div>
       )}
     </div>

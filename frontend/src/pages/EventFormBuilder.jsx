@@ -26,6 +26,8 @@ const EventFormBuilder = () => {
     date: '',
     endDate: '',
     time: '',
+    endTime: '',
+    registrationDeadlineTime: '',
     location: '',
     venue: '',
     type: 'Event',
@@ -41,7 +43,8 @@ const EventFormBuilder = () => {
     registrationFee: 0,
     requiresPayment: false,
     imageUrl: '',
-    tags: []
+    tags: [],
+    isClosed: false
   });
 
   const [merchandiseData, setMerchandiseData] = useState({
@@ -84,18 +87,32 @@ const EventFormBuilder = () => {
 
   useEffect(() => {
     if (isEditMode && existingEvent) {
+      const startDate = existingEvent.date ? new Date(existingEvent.date) : null;
+      const endDate = existingEvent.endDate ? new Date(existingEvent.endDate) : null;
+      const regDeadline = existingEvent.registrationDeadline ? new Date(existingEvent.registrationDeadline) : null;
+
+      const toDateInput = (d) => (d ? d.toISOString().split('T')[0] : '');
+      const toTimeInput = (d) => {
+        if (!d) return '';
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      };
+
       setEventData({
         title: existingEvent.title,
         description: existingEvent.description,
-        date: existingEvent.date.split('T')[0],
-        endDate: existingEvent.endDate ? existingEvent.endDate.split('T')[0] : existingEvent.date.split('T')[0],
-        time: existingEvent.time || '',
+        date: toDateInput(startDate),
+        endDate: toDateInput(endDate || startDate),
+        time: existingEvent.time || toTimeInput(startDate),
+        endTime: toTimeInput(endDate || startDate),
         location: existingEvent.location,
         venue: existingEvent.venue || '',
         type: existingEvent.type,
         category: existingEvent.category,
         maxParticipants: existingEvent.maxParticipants,
-        registrationDeadline: existingEvent.registrationDeadline?.split('T')[0] || '',
+        registrationDeadline: toDateInput(regDeadline),
+        registrationDeadlineTime: toTimeInput(regDeadline),
         eligibility: existingEvent.eligibility || 'All',
         participantType: existingEvent.participantType,
         allowTeams: existingEvent.allowTeams || false,
@@ -105,7 +122,8 @@ const EventFormBuilder = () => {
         registrationFee: existingEvent.registrationFee || 0,
         requiresPayment: existingEvent.requiresPayment || false,
         imageUrl: existingEvent.imageUrl || '',
-        tags: existingEvent.tags || []
+        tags: existingEvent.tags || [],
+        isClosed: existingEvent.isClosed || false
       });
       setCustomFields(existingEvent.customFields || []);
       if (existingEvent.merchandise) {
@@ -248,6 +266,38 @@ const EventFormBuilder = () => {
     }));
   };
 
+  // Keep team-related flags in sync with participantType and event type
+  useEffect(() => {
+    setEventData(prev => {
+      const isMerch = prev.type === EVENT_TYPES.MERCHANDISE;
+      const participantType = prev.participantType;
+      const next = { ...prev };
+
+      // Merchandise events are always individual-only
+      if (isMerch) {
+        next.allowTeams = false;
+        return next;
+      }
+
+      if (participantType === EVENT_PARTICIPANT_TYPES.TEAM) {
+        next.allowTeams = true;
+        if (!next.minTeamSize || next.minTeamSize < 2) next.minTeamSize = 2;
+        if (!next.maxTeamSize || next.maxTeamSize < next.minTeamSize) {
+          next.maxTeamSize = next.minTeamSize;
+        }
+      } else if (participantType === EVENT_PARTICIPANT_TYPES.BOTH) {
+        next.allowTeams = true;
+        next.minTeamSize = 1;
+        if (!next.maxTeamSize || next.maxTeamSize < 1) next.maxTeamSize = 2;
+      } else {
+        // Individual only
+        next.allowTeams = false;
+      }
+
+      return next;
+    });
+  }, [eventData.type, eventData.participantType]);
+
   const validateForm = () => {
     const newErrors = {};
     
@@ -256,6 +306,8 @@ const EventFormBuilder = () => {
     else if (eventData.description.trim().length < 20) newErrors.description = 'Description must be at least 20 characters';
     if (!eventData.date) newErrors.date = 'Date is required';
     if (!eventData.endDate) newErrors.endDate = 'End date is required';
+    if (!eventData.time) newErrors.time = 'Start time is required';
+    if (!eventData.endTime) newErrors.endTime = 'End time is required';
     if (!eventData.location.trim()) newErrors.location = 'Location is required';
     if (!eventData.category) newErrors.category = 'Category is required';
     if (!eventData.type) newErrors.type = 'Type is required';
@@ -272,6 +324,9 @@ const EventFormBuilder = () => {
       const deadline = new Date(eventData.registrationDeadline);
       if (deadline > eventDate) {
         newErrors.registrationDeadline = 'Registration deadline must be before event date';
+      }
+      if (!eventData.registrationDeadlineTime) {
+        newErrors.registrationDeadlineTime = 'Registration closing time is required';
       }
     }
 
@@ -309,6 +364,12 @@ const EventFormBuilder = () => {
       return;
     }
 
+    const toDateTime = (dateStr, timeStr) => {
+      if (!dateStr) return '';
+      if (!timeStr) return dateStr;
+      return `${dateStr}T${timeStr}:00`;
+    };
+
     const eventPayload = {
       ...eventData,
       organizer: organizerId,
@@ -324,8 +385,11 @@ const EventFormBuilder = () => {
       type: eventData.type || 'Event',
       category: eventData.category || 'Technical',
       customFields,
-      endDate: eventData.endDate,
+      date: toDateTime(eventData.date, eventData.time),
+      endDate: toDateTime(eventData.endDate, eventData.endTime),
+      registrationDeadline: toDateTime(eventData.registrationDeadline, eventData.registrationDeadlineTime),
       eligibility: eventData.eligibility || 'All',
+      isClosed: Boolean(eventData.isClosed),
       merchandise: eventData.type === 'Merchandise' ? {
         itemName: merchandiseData.itemName,
         description: merchandiseData.description,
@@ -353,7 +417,8 @@ const EventFormBuilder = () => {
               description: eventPayload.description,
               registrationDeadline: eventPayload.registrationDeadline,
               capacity: eventPayload.capacity,
-              maxParticipants: eventPayload.maxParticipants
+              maxParticipants: eventPayload.maxParticipants,
+              isClosed: eventPayload.isClosed
             }
           : eventPayload;
 
@@ -380,6 +445,10 @@ const EventFormBuilder = () => {
       showError(err?.message || 'Failed to save event');
     }
   };
+
+  const isMerchandise = eventData.type === EVENT_TYPES.MERCHANDISE;
+  const isTeamOnly = eventData.participantType === EVENT_PARTICIPANT_TYPES.TEAM;
+  const isBothModes = eventData.participantType === EVENT_PARTICIPANT_TYPES.BOTH;
 
   if (isEditMode && !existingEvent) {
     return (
@@ -502,19 +571,21 @@ const EventFormBuilder = () => {
               </select>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="category">Category *</label>
-              <select
-                id="category"
-                name="category"
-                value={eventData.category}
-                onChange={handleInputChange}
-              >
-                {Object.values(EVENT_CATEGORIES).map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
-            </div>
+            {!isMerchandise && (
+              <div className="form-group">
+                <label htmlFor="category">Category *</label>
+                <select
+                  id="category"
+                  name="category"
+                  value={eventData.category}
+                  onChange={handleInputChange}
+                >
+                  {Object.values(EVENT_CATEGORIES).map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="form-group">
@@ -536,7 +607,7 @@ const EventFormBuilder = () => {
           
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="date">Event Date *</label>
+              <label htmlFor="date">Event Start Date *</label>
               <input
                 type="date"
                 id="date"
@@ -549,6 +620,21 @@ const EventFormBuilder = () => {
             </div>
 
             <div className="form-group">
+              <label htmlFor="time">Start Time *</label>
+              <input
+                type="time"
+                id="time"
+                name="time"
+                value={eventData.time}
+                onChange={handleInputChange}
+                className={errors.time ? 'error' : ''}
+              />
+              {errors.time && <span className="error-message">{errors.time}</span>}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
               <label htmlFor="endDate">Event End Date *</label>
               <input
                 type="date"
@@ -560,18 +646,18 @@ const EventFormBuilder = () => {
               />
               {errors.endDate && <span className="error-message">{errors.endDate}</span>}
             </div>
-          </div>
 
-          <div className="form-row">
             <div className="form-group">
-              <label htmlFor="time">Event Time</label>
+              <label htmlFor="endTime">End Time *</label>
               <input
                 type="time"
-                id="time"
-                name="time"
-                value={eventData.time}
+                id="endTime"
+                name="endTime"
+                value={eventData.endTime}
                 onChange={handleInputChange}
+                className={errors.endTime ? 'error' : ''}
               />
+              {errors.endTime && <span className="error-message">{errors.endTime}</span>}
             </div>
           </div>
 
@@ -610,7 +696,9 @@ const EventFormBuilder = () => {
           
           <div className="form-row">
             <div className="form-group">
-              <label htmlFor="maxParticipants">Max Participants *</label>
+              <label htmlFor="maxParticipants">
+                {isMerchandise ? 'Max Orders' : 'Max Participants'} *
+              </label>
               <input
                 type="number"
                 id="maxParticipants"
@@ -624,7 +712,7 @@ const EventFormBuilder = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="registrationDeadline">Registration Deadline</label>
+              <label htmlFor="registrationDeadline">Registration Deadline Date</label>
               <input
                 type="date"
                 id="registrationDeadline"
@@ -634,6 +722,23 @@ const EventFormBuilder = () => {
                 className={errors.registrationDeadline ? 'error' : ''}
               />
               {errors.registrationDeadline && <span className="error-message">{errors.registrationDeadline}</span>}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="registrationDeadlineTime">Registration Deadline Time</label>
+              <input
+                type="time"
+                id="registrationDeadlineTime"
+                name="registrationDeadlineTime"
+                value={eventData.registrationDeadlineTime}
+                onChange={handleInputChange}
+                className={errors.registrationDeadlineTime ? 'error' : ''}
+              />
+              {errors.registrationDeadlineTime && (
+                <span className="error-message">{errors.registrationDeadlineTime}</span>
+              )}
             </div>
           </div>
 
@@ -651,6 +756,20 @@ const EventFormBuilder = () => {
             </select>
           </div>
 
+          {isEditMode && (
+            <div className="form-group checkbox-group">
+              <label>
+                <input
+                  type="checkbox"
+                  name="isClosed"
+                  checked={eventData.isClosed}
+                  onChange={handleInputChange}
+                />
+                Close registrations for this event
+              </label>
+            </div>
+          )}
+
           <div className="form-group checkbox-group">
             <label>
               <input
@@ -663,62 +782,70 @@ const EventFormBuilder = () => {
             </label>
           </div>
 
-          <div className="form-group">
-            <label htmlFor="participantType">Participant Type</label>
-            <select
-              id="participantType"
-              name="participantType"
-              value={eventData.participantType}
-              onChange={handleInputChange}
-            >
-              {Object.values(EVENT_PARTICIPANT_TYPES).map(type => (
-                <option key={type} value={type}>{type}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group checkbox-group">
-            <label>
-              <input
-                type="checkbox"
-                name="allowTeams"
-                checked={eventData.allowTeams}
-                onChange={handleInputChange}
-              />
-              Allow team registrations
-            </label>
-          </div>
-
-          {eventData.allowTeams && (
-            <div className="form-row">
+          {!isMerchandise && (
+            <>
               <div className="form-group">
-                <label htmlFor="minTeamSize">Min Team Size</label>
-                <input
-                  type="number"
-                  id="minTeamSize"
-                  name="minTeamSize"
-                  value={eventData.minTeamSize}
+                <label htmlFor="participantType">Participant Type</label>
+                <select
+                  id="participantType"
+                  name="participantType"
+                  value={eventData.participantType}
                   onChange={handleInputChange}
-                  min="2"
-                  className={errors.minTeamSize ? 'error' : ''}
-                />
-                {errors.minTeamSize && <span className="error-message">{errors.minTeamSize}</span>}
+                >
+                  {Object.values(EVENT_PARTICIPANT_TYPES).map(type => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="maxTeamSize">Max Team Size</label>
-                <input
-                  type="number"
-                  id="maxTeamSize"
-                  name="maxTeamSize"
-                  value={eventData.maxTeamSize}
-                  onChange={handleInputChange}
-                  min="2"
-                  className={errors.maxTeamSize ? 'error' : ''}
-                />
-                {errors.maxTeamSize && <span className="error-message">{errors.maxTeamSize}</span>}
-              </div>
-            </div>
+              {isBothModes && (
+                <div className="form-group">
+                  <label htmlFor="maxTeamSize">Max participants per registration</label>
+                  <input
+                    type="number"
+                    id="maxTeamSize"
+                    name="maxTeamSize"
+                    value={eventData.maxTeamSize}
+                    onChange={handleInputChange}
+                    min="1"
+                    className={errors.maxTeamSize ? 'error' : ''}
+                  />
+                  {errors.maxTeamSize && <span className="error-message">{errors.maxTeamSize}</span>}
+                </div>
+              )}
+
+              {isTeamOnly && (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="minTeamSize">Min team size</label>
+                    <input
+                      type="number"
+                      id="minTeamSize"
+                      name="minTeamSize"
+                      value={eventData.minTeamSize}
+                      onChange={handleInputChange}
+                      min="2"
+                      className={errors.minTeamSize ? 'error' : ''}
+                    />
+                    {errors.minTeamSize && <span className="error-message">{errors.minTeamSize}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="maxTeamSize">Max team size</label>
+                    <input
+                      type="number"
+                      id="maxTeamSize"
+                      name="maxTeamSize"
+                      value={eventData.maxTeamSize}
+                      onChange={handleInputChange}
+                      min="2"
+                      className={errors.maxTeamSize ? 'error' : ''}
+                    />
+                    {errors.maxTeamSize && <span className="error-message">{errors.maxTeamSize}</span>}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
 

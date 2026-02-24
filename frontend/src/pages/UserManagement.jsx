@@ -224,8 +224,9 @@ const UserManagement = () => {
       const res = await adminAPI.createOrganizer(newOrganizer);
       if (res.success) {
         setUsers(prev => [...prev, res.data]);
+        // Backend always returns credentials (auto-generated email if blank, always auto-generated password)
         setCreatedCreds(res.credentials);
-        showSuccess('Organizer created');
+        showSuccess('Organizer created. Copy the credentials below and share with the organizer.');
         setNewOrganizer(initialOrganizer);
         setNewOrganizerErrors({});
       }
@@ -239,7 +240,7 @@ const UserManagement = () => {
   return (
     <div className="user-management">
       <div className="page-header">
-        <h1>User Management</h1>
+        <h1>Password Reset Requests & Organizer Accounts</h1>
       </div>
 
       <div className="stats-grid">
@@ -468,13 +469,23 @@ const UserManagement = () => {
       )}
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={() => !createdCreds && setShowCreateModal(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Create Organizer</h2>
-              <button className="modal-close" onClick={() => setShowCreateModal(false)}>×</button>
+              <h2>{createdCreds ? 'Organizer Created – Share These Credentials' : 'Create Organizer'}</h2>
+              <button className="modal-close" onClick={() => { setShowCreateModal(false); setCreatedCreds(null); }}>×</button>
             </div>
             <div className="modal-body">
+              {createdCreds ? (
+                <div className="credentials-box credentials-box-prominent">
+                  <p><strong>System-generated login (share with the organizer)</strong></p>
+                  <p><strong>Email:</strong> <code>{createdCreds.email}</code></p>
+                  <p><strong>Password:</strong> <code>{createdCreds.password}</code></p>
+                  <p className="warning-text">Copy and share these securely now. They cannot be retrieved later.</p>
+                </div>
+              ) : (
+                <>
+              <p className="form-hint">The system will auto-generate a login email if you leave it blank, and will always auto-generate a password. Both will be shown after you click Create Organizer.</p>
               <div className="form-section">
                 <h3 className="section-title">Account</h3>
                 <div className="form-grid">
@@ -503,7 +514,7 @@ const UserManagement = () => {
                     {newOrganizerErrors.lastName && <span className="error-text">{newOrganizerErrors.lastName}</span>}
                   </label>
                   <label className="form-group">
-                    Login Email (auto-generated if left blank)
+                    Login Email (optional – leave blank for system to auto-generate)
                     <input
                       type="email"
                       value={newOrganizer.email}
@@ -512,6 +523,7 @@ const UserManagement = () => {
                         setNewOrganizerErrors(prev => ({ ...prev, email: '' }));
                       }}
                       className={newOrganizerErrors.email ? 'input-error' : ''}
+                      placeholder="Leave blank to auto-generate"
                     />
                     {newOrganizerErrors.email && <span className="error-text">{newOrganizerErrors.email}</span>}
                   </label>
@@ -602,18 +614,19 @@ const UserManagement = () => {
                   </label>
                 </div>
               </div>
+                </>
+              )}
             </div>
             <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
-              <button className="btn-primary" disabled={creating} onClick={handleCreateOrganizer}>{creating ? 'Creating...' : 'Create Organizer'}</button>
+              {createdCreds ? (
+                <button className="btn-primary" onClick={() => { setShowCreateModal(false); setCreatedCreds(null); }}>Done</button>
+              ) : (
+                <>
+                  <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>Cancel</button>
+                  <button className="btn-primary" disabled={creating} onClick={handleCreateOrganizer}>{creating ? 'Creating...' : 'Create Organizer'}</button>
+                </>
+              )}
             </div>
-            {createdCreds && (
-              <div className="credentials-box">
-                <p><strong>Credentials</strong></p>
-                <p>Email: {createdCreds.email}</p>
-                <p>Password: {createdCreds.password}</p>
-              </div>
-            )}
           </div>
         </div>
       )}

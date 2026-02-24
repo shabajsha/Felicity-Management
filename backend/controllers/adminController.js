@@ -4,33 +4,7 @@ const Registration = require('../models/Registration');
 const Club = require('../models/Club');
 const PasswordResetRequest = require('../models/PasswordResetRequest');
 const { sendOrganizerProvisionMail, sendOrganizerResetMail } = require('../utils/mailer');
-
-// Helper: generate a simple random password
-const generatePassword = () => `Org@${Math.random().toString(36).slice(2, 8)}`;
-
-const slugifyEmail = (value) => {
-  if (!value) return 'organizer';
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'organizer';
-};
-
-const generateOrganizerEmail = async (base, domain = 'eventhub.local') => {
-  const baseSlug = slugifyEmail(base);
-  let attempt = 0;
-
-  while (attempt < 50) {
-    const suffix = attempt === 0 ? '' : `-${attempt}`;
-    const candidate = `${baseSlug}${suffix}@${domain}`;
-    // eslint-disable-next-line no-await-in-loop
-    const exists = await User.findOne({ email: candidate });
-    if (!exists) return candidate;
-    attempt += 1;
-  }
-
-  return `${baseSlug}-${Date.now()}@${domain}`;
-};
+const { generatePassword, generateOrganizerEmail } = require('../utils/organizerCredentials');
 
 // @desc    Get all users
 // @route   GET /api/admin/users
