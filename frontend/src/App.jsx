@@ -20,7 +20,6 @@ import PaymentApproval from './pages/PaymentApproval.jsx';
 import AdminDashboard from './pages/AdminDashboard.jsx';
 import ClubManagement from './pages/ClubManagement.jsx';
 import UserManagement from './pages/UserManagement.jsx';
-import EventApproval from './pages/EventApproval.jsx';
 import QRScanner from './components/QRScanner.jsx';
 import DiscussionForum from './components/DiscussionForum.jsx';
 import FeedbackSystem from './components/FeedbackSystem.jsx';
@@ -105,7 +104,6 @@ function AppContent() {
                   {user.role === USER_ROLES.ADMIN && (
                     <>
                       <Link to="/admin/dashboard" className="nav-link">Dashboard</Link>
-                      <Link to="/admin/events" className="nav-link">Event Approval</Link>
                       <Link to="/admin/clubs" className="nav-link">Manage Clubs/Organizers</Link>
                       <Link to="/admin/users" className="nav-link">Password Reset Requests</Link>
                     </>
@@ -328,14 +326,6 @@ function AppContent() {
                 element={
                   <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
                     <AdminDashboard />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/admin/events" 
-                element={
-                  <ProtectedRoute allowedRoles={[USER_ROLES.ADMIN]}>
-                    <EventApproval />
                   </ProtectedRoute>
                 } 
               />

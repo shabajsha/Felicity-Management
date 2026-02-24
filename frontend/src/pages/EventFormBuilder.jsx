@@ -338,10 +338,19 @@ const EventFormBuilder = () => {
       if (Number(merchandiseData.purchaseLimit) < 1) newErrors.merchandisePurchaseLimit = 'Purchase limit must be at least 1';
     }
 
-    if (eventData.allowTeams) {
-      if (eventData.minTeamSize < 2) newErrors.minTeamSize = 'Minimum team size must be at least 2';
+    // Team size validation aligned with participantType and UI
+    if (eventData.participantType === EVENT_PARTICIPANT_TYPES.TEAM) {
+      // Pure team events: require explicit min/max team size (both at least 2)
+      if (eventData.minTeamSize < 2) {
+        newErrors.minTeamSize = 'Minimum team size must be at least 2';
+      }
       if (eventData.maxTeamSize < eventData.minTeamSize) {
         newErrors.maxTeamSize = 'Maximum team size must be greater than minimum';
+      }
+    } else if (eventData.participantType === EVENT_PARTICIPANT_TYPES.BOTH) {
+      // Mixed individual + team: UI only asks for "max participants per registration"
+      if (eventData.maxTeamSize < 1) {
+        newErrors.maxTeamSize = 'Max participants per registration must be at least 1';
       }
     }
 
