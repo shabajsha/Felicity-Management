@@ -339,17 +339,20 @@ const EventFormBuilder = () => {
     }
 
     // Team size validation aligned with participantType and UI
+    const minTeam = Number(eventData.minTeamSize || 0);
+    const maxTeam = Number(eventData.maxTeamSize || 0);
+
     if (eventData.participantType === EVENT_PARTICIPANT_TYPES.TEAM) {
       // Pure team events: require explicit min/max team size (both at least 2)
-      if (eventData.minTeamSize < 2) {
+      if (minTeam < 2) {
         newErrors.minTeamSize = 'Minimum team size must be at least 2';
       }
-      if (eventData.maxTeamSize < eventData.minTeamSize) {
+      if (!newErrors.minTeamSize && maxTeam < minTeam) {
         newErrors.maxTeamSize = 'Maximum team size must be greater than minimum';
       }
     } else if (eventData.participantType === EVENT_PARTICIPANT_TYPES.BOTH) {
       // Mixed individual + team: UI only asks for "max participants per registration"
-      if (eventData.maxTeamSize < 1) {
+      if (maxTeam < 1) {
         newErrors.maxTeamSize = 'Max participants per registration must be at least 1';
       }
     }

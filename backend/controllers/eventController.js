@@ -209,7 +209,8 @@ exports.getEvents = async (req, res, next) => {
 
     // Pagination
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    // Frontend currently does not handle pagination; return a larger default page size
+    const limit = parseInt(req.query.limit, 10) || 1000;
     const startIndex = (page - 1) * limit;
     const endIndex = page * limit;
     const total = await Event.countDocuments(queryObj);
