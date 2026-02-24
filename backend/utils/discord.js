@@ -31,8 +31,7 @@ const buildEventMessage = (event, baseUrl) => {
   return lines.join('\n');
 };
 
-const postEventToDiscord = async (event) => {
-  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+const postEventToDiscord = async (event, webhookUrl) => {
   if (!webhookUrl) {
     return;
   }

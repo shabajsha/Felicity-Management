@@ -137,12 +137,12 @@ const ManageEventsPage = () => {
       }
 
       try {
-        await updateEvent(eventId, { status: 'pending', lifecycleStatus: 'published' });
+        await updateEvent(eventId, { status: 'approved', lifecycleStatus: 'published' });
       } catch {
         // Local sync best-effort only
       }
 
-      showSuccess('Draft submitted for approval successfully');
+      showSuccess('Event published successfully');
     } catch (error) {
       showError(error.message || 'Failed to publish event');
     } finally {

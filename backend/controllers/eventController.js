@@ -48,8 +48,13 @@ exports.createEvent = async (req, res, next) => {
     req.body.organizer = req.user.id;
     const publishNow = Boolean(req.body.publishNow);
 
-    req.body.status = publishNow ? 'pending' : 'draft';
-    req.body.lifecycleStatus = 'draft';
+    if (publishNow) {
+      req.body.status = 'approved';
+      req.body.lifecycleStatus = 'published';
+    } else {
+      req.body.status = 'draft';
+      req.body.lifecycleStatus = 'draft';
+    }
     // Ensure organizerName is set from user profile if not provided
     if (!req.body.organizerName && req.user) {
       const name = `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim();
@@ -449,11 +454,6 @@ exports.updateEvent = async (req, res, next) => {
       }
     }
 
-    // If published event was approved and modified, set back to pending
-    if (event.status === 'approved' && req.user.role !== 'Admin') {
-      req.body.status = 'pending';
-    }
-
     event = await Event.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
@@ -546,7 +546,12 @@ exports.approveEvent = async (req, res, next) => {
     await event.save();
 
     if (status === 'approved') {
-      postEventToDiscord(event);
+      let webhookUrl;
+      if (event.organizer) {
+        const organizer = await User.findById(event.organizer).select('organizerProfile');
+        webhookUrl = organizer?.organizerProfile?.discordWebhook;
+      }
+      postEventToDiscord(event, webhookUrl);
     }
 
     res.status(200).json({
@@ -561,7 +566,7 @@ exports.approveEvent = async (req, res, next) => {
   }
 };
 
-// @desc    Publish event (move draft to pending approval)
+// @desc    Publish event (move draft to approved/published)
 // @route   PUT /api/events/:id/publish
 // @access  Private (Organizer/Admin)
 exports.publishEvent = async (req, res, next) => {
@@ -582,7 +587,7 @@ exports.publishEvent = async (req, res, next) => {
       });
     }
 
-    event.status = 'pending';
+    event.status = 'approved';
     event.lifecycleStatus = 'published';
     await event.save();
 

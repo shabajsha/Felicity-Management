@@ -26,6 +26,7 @@ function ProfilePage() {
     organizerDescription: '',
     organizerContactEmail: '',
     organizerContactNumber: '',
+    organizerDiscordWebhook: '',
   });
 
   const [isEditing, setIsEditing] = useState(false);
@@ -55,6 +56,7 @@ function ProfilePage() {
         organizerDescription: user.organizerProfile?.description || '',
         organizerContactEmail: user.organizerProfile?.contactEmail || '',
         organizerContactNumber: user.organizerProfile?.contactNumber || '',
+        organizerDiscordWebhook: user.organizerProfile?.discordWebhook || '',
       });
     }
   }, [user]);
@@ -168,6 +170,7 @@ function ProfilePage() {
         description: formData.organizerDescription,
         contactEmail: formData.organizerContactEmail,
         contactNumber: formData.organizerContactNumber,
+        discordWebhook: formData.organizerDiscordWebhook?.trim() || undefined,
       } : undefined,
     });
 
@@ -265,6 +268,7 @@ function ProfilePage() {
                 organizerDescription: user.organizerProfile?.description || '',
                 organizerContactEmail: user.organizerProfile?.contactEmail || '',
                 organizerContactNumber: user.organizerProfile?.contactNumber || '',
+                organizerDiscordWebhook: user.organizerProfile?.discordWebhook || '',
               });
             }}>
               Cancel

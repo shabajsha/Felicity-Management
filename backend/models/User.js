@@ -55,7 +55,8 @@ const userSchema = new mongoose.Schema({
     category: String,
     description: String,
     contactEmail: String,
-    contactNumber: String
+    contactNumber: String,
+    discordWebhook: String
   },
   preferences: {
     interests: [{ type: String }],

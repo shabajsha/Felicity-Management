@@ -176,14 +176,15 @@ exports.updateProfile = async (req, res, next) => {
 
     // Organizer profile updates (only for organizer role)
     if (req.user.role === 'Organizer' && req.body.organizerProfile) {
-      const { name, category, description, contactEmail, contactNumber } = req.body.organizerProfile;
+      const { name, category, description, contactEmail, contactNumber, discordWebhook } = req.body.organizerProfile;
       fieldsToUpdate.organizerProfile = {
         ...(existingUser.organizerProfile || {}),
         ...(name && { name }),
         ...(category && { category }),
         ...(description && { description }),
         ...(contactEmail && { contactEmail }),
-        ...(contactNumber && { contactNumber })
+        ...(contactNumber && { contactNumber }),
+        ...(discordWebhook && { discordWebhook })
       };
     }
 

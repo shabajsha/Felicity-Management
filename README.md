@@ -294,7 +294,6 @@ Full-stack MERN application to manage Felicity and campus events, clubs, registr
    # - JWT_SECRET
    # - FRONTEND_URL
    # - SMTP_* values
-   # - DISCORD_WEBHOOK_URL (optional; used for event announcements)
    ```
 
 4. Run development server:

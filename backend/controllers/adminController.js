@@ -374,7 +374,8 @@ exports.createOrganizer = async (req, res, next) => {
       category,
       description,
       contactEmail,
-      contactPhone
+      contactPhone,
+      discordWebhook
     } = req.body;
 
     const trimmedEmail = (email || '').trim();
@@ -405,7 +406,8 @@ exports.createOrganizer = async (req, res, next) => {
         category,
         description,
         contactEmail: contactEmail || finalEmail,
-        contactNumber: contactPhone || contactNumber
+        contactNumber: contactPhone || contactNumber,
+        discordWebhook
       }
     });
 
