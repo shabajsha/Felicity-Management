@@ -15,14 +15,19 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(process.env.UPLOAD_PATH || 'uploads'));
 
 // Enable CORS
+const rawFrontendUrl = process.env.FRONTEND_URL || '';
+const normalizedFrontendUrl = rawFrontendUrl.replace(/\/+$/, ''); // strip trailing slashes
+
 const allowedOrigins = [
   'http://localhost:5174',
   'http://localhost:5173',
   'http://127.0.0.1:5174',
-  'http://127.0.0.1:5173',
-].concat(
-  process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []
-);
+  'http://127.0.0.1:5173'
+];
+
+if (normalizedFrontendUrl) {
+  allowedOrigins.push(normalizedFrontendUrl);
+}
 
 app.use(cors({
   origin: allowedOrigins,
