@@ -1,11 +1,18 @@
 const path = require('path');
+const fs = require('fs');
 const multer = require('multer');
 
-const uploadPath = process.env.UPLOAD_PATH || 'uploads';
+// Resolve upload path and ensure it exists at runtime
+const uploadPath = path.resolve(process.cwd(), process.env.UPLOAD_PATH || 'uploads');
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadPath);
+    try {
+      fs.mkdirSync(uploadPath, { recursive: true });
+      cb(null, uploadPath);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
