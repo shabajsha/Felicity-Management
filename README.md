@@ -141,24 +141,6 @@ Full-stack MERN application to manage Felicity and campus events, clubs, registr
     - **RegistrationManagement** and **PaymentApproval**:
       - Provide organizer dashboards to review proofs, approve/reject, and see revenue analytics.
 
-#### 3.1.3 QR Scanner and Attendance
-
-- **What**:
-  - QR code generation per registration (`Registration.ticketQr`) and `QRScanner` UI for organizers/admins to check-in participants.
-- **Why this feature**:
-  - Physical check-in at venues is standard for large events. QR-based attendance is specifically called out in Tier A and provides a realistic operational flow.
-- **Design and technical decisions**:
-  - **Ticket generation**:
-    - On confirmed/approved registrations, `issueTicket`:
-      - Generates a QR image for the `ticketId`.
-      - Stores `ticketQr` in registration.
-      - Sends ticket email.
-  - **QRScanner** component:
-    - Uses manual Ticket ID input (e.g. from physical QR scanner mapping to text) and a filtered registrations list.
-    - Calls `PUT /api/registrations/:id/checkin` to mark the participant as checked in.
-    - Shows dashboard cards: total registrations, checked-in count, pending, and attendance rate.
-    - Recent check-in history for quick visual feedback.
-
 ### 3.2 Tier B Features
 
 #### 3.2.1 Real-Time Discussion Forum (Per Event) with Notifications
